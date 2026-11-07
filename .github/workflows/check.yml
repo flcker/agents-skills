@@ -16,7 +16,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Scan skills and scripts for secrets (bash)
         if: runner.os == 'Linux'
@@ -32,7 +32,7 @@ jobs:
     name: structure
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Every skill has frontmatter with updated and description
         shell: bash
