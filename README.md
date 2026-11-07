@@ -26,9 +26,13 @@ agents-skills/
 │   ├── check-sanitize.ps1   # 发布前脱敏自检（Windows）
 │   └── check-sanitize.sh    # 发布前脱敏自检（macOS / Linux / WSL）
 └── skills/            # 技能存放目录（按用途分类组织，分类规则见 AGENTS.md）
-    └── dev/           # 工程开发类（目标：开发电脑）
+    ├── dev/           # 工程开发类（目标：开发电脑）
+    │   └── <skill-name>/
+    │       ├── SKILL.md        # 技能说明与指令（核心文件）
+    │       └── references/     # 技能参考资源（可选，按需加载）
+    └── ops/           # 运维操作类（目标：开发电脑）
         └── <skill-name>/
-            ├── SKILL.md        # 技能说明与指令（核心文件）
+            ├── SKILL.md
             └── references/     # 技能参考资源（可选，按需加载）
 ```
 
@@ -46,6 +50,10 @@ agents-skills/
 - [`figma-ui-web`](skills/dev/figma-ui-web/) — 用 Figma 设计稿开发 Web 前端 UI 的规范：双通道阅读（`get_figma_data` 精确数据 + `download_figma_images` 视觉截图并行，禁止单通道写码）、用确切值不做视觉估算、结构分析（重复模式→组件/绝对定位→flex·grid/语义角色→框架组件）、资源下载不手绘、实现后用 Playwright 截图对比设计稿自查 + 人工挑刺迭代的验证闭环，适配 Framelink `figma-developer-mcp`。
 - [`figma-ui-desktop`](skills/dev/figma-ui-desktop/) — 用 Figma 设计稿开发桌面端 UI（Qt Widget / QML / WinUI / Flutter）的规范：框架无关的「数据→目标框架翻译」方法论，双通道阅读 + 用确切值 + 结构分析 + 「画布概念→目标框架」映射表（布局/颜色/间距/圆角/阴影/图标/状态 13 类，覆盖 Qt Widget/QML/WinUI/Flutter 四框架）+ 实际运行截图对比设计稿的验证闭环，适配 Framelink `figma-developer-mcp`。
 - [`mslearn`](skills/dev/mslearn/) — 微软官方技术文档查询：curl 直调 Microsoft Learn 公共 MCP 端点，语义搜索官方文档、搜官方代码示例（支持 cpp 等语言过滤）、抓取整篇文档转 markdown，免认证零依赖，sh/ps1 双脚本跨 Windows/macOS/Linux，替代挂 MCP server 省 1.5~2K 常驻 token。
+
+### ops/ —— 运维操作
+
+- [`external-skill-manager`](skills/ops/external-skill-manager/) — 外部技能管理编排：用户给外部 skill 的 git 仓库 URL、GitHub/GitLab 仓库页或介绍网页，把输入识别为 source-ref、决定 ref 与 namespace，调用 `scripts/external-skills.{sh,ps1}` 写入 `external-skills.yaml` 并同步挂载到各 Agent；网页反爬时配合 `cdp-search-fetch` 抓取提取仓库地址。
 
 ## 快速开始
 
