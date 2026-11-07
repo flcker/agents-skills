@@ -12,7 +12,6 @@ models.yml
 
 # 生成物
 dist/
-AGENTS.md
 .bak/
 
 # 脱敏自检用的内网域名清单（本地维护，不入公开仓库）
