@@ -1,0 +1,66 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sanitize:
+    name: sanitize (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan skills and scripts for secrets (bash)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: ./scripts/check-sanitize.sh
+
+      - name: Scan skills and scripts for secrets (PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/check-sanitize.ps1
+
+  structure:
+    name: structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Every skill has frontmatter with updated and description
+        shell: bash
+        run: |
+          fail=0
+          for f in skills/*/*/SKILL.md; do
+            [ -f "$f" ] || continue
+            head -1 "$f" | grep -qx -- '---' || { echo "::error file=$f::missing frontmatter (line 1 must be ---)"; fail=1; }
+            grep -q '^updated:' "$f" || { echo "::error file=$f::missing updated in frontmatter"; fail=1; }
+            grep -q '^description:' "$f" || { echo "::error file=$f::missing description in frontmatter"; fail=1; }
+          done
+          exit $fail
+
+      - name: skills are two levels deep (category/name/SKILL.md)
+        shell: bash
+        run: |
+          bad=$(find skills -mindepth 1 -maxdepth 1 -type f)
+          if [ -n "$bad" ]; then
+            echo "::error::skills/ may not contain files at top level (skills must be under category/):"
+            echo "$bad"
+            exit 1
+          fi
+          # 三级及以上目录（技能名之下不应再有嵌套的 SKILL 之外的散落技能）不强制，但禁止技能名缺失
+          miss=$(find skills -mindepth 2 -maxdepth 2 -type d ! -name SKILL.md 2>/dev/null | while read d; do
+            [ -f "$d/SKILL.md" ] || echo "$d"
+          done)
+          if [ -n "$miss" ]; then
+            echo "::error::each skill dir must contain SKILL.md:"
+            echo "$miss"
+            exit 1
+          fi
