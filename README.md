@@ -15,9 +15,12 @@ agents-skills/
 ├── LICENSE            # MIT
 ├── .gitignore         # Git 忽略规则
 ├── REPO_ID            # 本仓库的稳定命名空间标识（见下文「身份识别」）
+├── external-skills.yaml   # 外部 git 技能清单（事实源，见下文「外部技能」）
 ├── scripts/           # 分发/安装脚本 + 脱敏自检
 │   ├── install-skills.ps1   # Windows 安装脚本（PowerShell）
 │   ├── install-skills.sh    # macOS / Linux / WSL 安装脚本（bash）
+│   ├── external-skills.ps1  # Windows 外部技能管理（clone/更新/挂载）
+│   ├── external-skills.sh   # macOS / Linux / WSL 外部技能管理
 │   ├── pack-skill.ps1       # Windows 打包脚本（IM 分发 zip）
 │   ├── pack-skill.sh        # macOS / Linux 打包脚本（bash）
 │   ├── check-sanitize.ps1   # 发布前脱敏自检（Windows）
@@ -83,6 +86,36 @@ bash scripts/install-skills.sh
 ```
 
 脚本只清理**链接（junction/symlink）**，且仅清理「目标归属本仓库（REPO_ID 一致）且目标已不存在」的悬空链接；**绝不删除**指向其他仓库/外部目录（无 REPO_ID）的技能链接，也**不覆盖**非链接的真实目录/文件。
+
+### 外部技能（external skills）
+
+除本仓库 `skills/` 下的内建技能外，还能声明式管理**来自外部 git 仓库**的技能。
+
+- **事实源**：`external-skills.yaml`，YAML 受限子集，`sources:` 下每行一条 `namespace: source-ref`，支持 `#` 注释。
+- **source-ref 语法**（ref 缺省 `HEAD`，即跟随远程默认分支）：
+  - `github:owner/repo@v1.2.0` → `https://github.com/owner/repo.git` + ref `v1.2.0`
+  - `gitlab:owner/repo@abc1234` → `https://gitlab.com/owner/repo.git` + ref `abc1234`
+  - `https://host/owner/repo.git@v1.2.0` → 原 URL + ref 取最后一个 `@` 之后
+- **namespace**：每源一个挂载前缀，外部技能以 `<namespace>.<技能名>` 挂载，与本仓库内建技能（`<技能名>`）物理隔离、互不覆盖。写 `auto` 表示自动推导（优先读源仓库 `REPO_ID`，无则按 URL 生成 slug）。
+- **ref 纪律**：生产/CI 用 tag 或 commit SHA；branch 仅开发期使用。
+
+管理命令（`bash scripts/external-skills.sh`，Windows 用 `external-skills.ps1` 同名子命令）：
+
+```bash
+bash scripts/external-skills.sh apply                                # 同步 + 冲突预检 + 挂载（缺省）
+bash scripts/external-skills.sh add github:alice/skills@v1.2.0 --namespace foo
+bash scripts/external-skills.sh remove foo [--prune]                 # --prune 连缓存一起删
+bash scripts/external-skills.sh update [<namespace>|--all]
+bash scripts/external-skills.sh list
+```
+
+行为要点：
+
+- **同步**：克隆/更新到用户级缓存 `~/.agents/external-skills/<url-slug>/`（Windows：`%USERPROFILE%\.agents\external-skills\`），与仓库解耦、可重建。
+- **发现**：宽松扫描源内任意含 `SKILL.md` 的目录（不强求 `skills/<分类>/` 两级布局）。
+- **冲突**：同 namespace 下同名技能视为冲突，`apply` **fail-fast**——打印冲突清单与「改 namespace」指引，本轮不挂载任何外部技能，绝不做半成品挂载或静默覆盖。
+- **接入**：`install-skills.{sh,ps1}` 会在清单非空时自动委托 `apply`（内建技能挂载完成后执行）。
+- **安全**：外部仓库不经本仓库 `check-sanitize` 校验，`apply` 也不做脱敏检查，内容安全由使用方自担。
 
 ### IM 分发（打包）
 

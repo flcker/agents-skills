@@ -1,0 +1,23 @@
+# external-skills.yaml
+#
+# 外部 git 仓库技能清单（事实源）。YAML 受限子集，每行一个条目：
+#   <namespace>: <source-ref>
+#
+# namespace：该源的挂载前缀（外部技能以 <namespace>.<技能名> 挂载，与本仓库内建技能隔离）。
+#   - 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID，无则按 URL 生成 slug。
+#   - 显式指定时，同 namespace 下同名技能视为冲突，apply 会 fail-fast（详见 scripts/external-skills.sh）。
+#
+# source-ref 语法：
+#   github:owner/repo@v1.2.0            → https://github.com/owner/repo.git + ref v1.2.0
+#   gitlab:owner/repo@abc1234            → https://gitlab.com/owner/repo.git + ref abc1234
+#   https://host/owner/repo.git@v1.2.0   → 原 URL + ref 取最后一个 @ 之后
+#   省略 @ref 时 ref 缺省为 HEAD（跟随远程默认分支，兼容 main/master 等命名）。
+#   完整 URL 形式不得内嵌 userinfo/密码（凭据请走 git credential helper）。
+#
+# ref 纪律：生产/CI 用 tag 或 commit SHA；branch（如 main）仅开发期使用。
+#
+# 示例（注释行不会被处理，取消注释即可启用）：
+sources:
+  # flcker.awesome: github:flcker/awesome-skills@v1.2.0
+  # team.tools: gitlab:team/tools@abc1234def
+  # auto: https://github.com/alice/skills.git

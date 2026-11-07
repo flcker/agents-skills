@@ -288,3 +288,15 @@ echo ""
 echo "完成。本次挂载 $mounted 个，跳过 $skipped 个，修正错挂 $remounted 个，失败 $failed 个，清理悬空链接 $cleaned 个。"
 echo "提示：本仓库 git pull 后，所有已挂载的技能自动更新，无需重装。"
 echo "新增技能后重跑本脚本即可挂载；悬空链接自动清理（--sync 为兼容别名）。"
+
+# 外部技能（清单 external-skills.yaml 非空时委托 external-skills.sh apply）
+EXT_SCRIPT="$REPO_ROOT/scripts/external-skills.sh"
+EXT_MANIFEST="$REPO_ROOT/external-skills.yaml"
+if [ -f "$EXT_MANIFEST" ] && [ -x "$EXT_SCRIPT" ] && \
+   grep -qE '^[[:space:]]*[^#[:space:]][^:]*:[[:space:]]+[^[:space:]]' "$EXT_MANIFEST"; then
+    echo ""
+    echo "== 外部技能同步（external-skills）=="
+    if ! bash "$EXT_SCRIPT" apply; then
+        echo "警告：外部技能同步失败（内建技能挂载已完成）。" >&2
+    fi
+fi

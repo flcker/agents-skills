@@ -279,3 +279,25 @@ Write-Host ""
 Write-Host "完成。本次挂载 $mounted 个，跳过 $skipped 个，修正错挂 $remounted 个，失败 $failed 个，清理悬空链接 $cleaned 个。"
 Write-Host "提示：本仓库 git pull 后，所有已挂载的技能自动更新，无需重装。"
 Write-Host "新增技能后重跑本脚本即可挂载；悬空链接自动清理（-Sync 为兼容别名）。"
+
+# 外部技能（清单 external-skills.yaml 非空时委托 external-skills.ps1 apply）
+$extList = Join-Path $RepoRoot 'external-skills.yaml'
+$extScript = Join-Path $PSScriptRoot 'external-skills.ps1'
+if ((Test-Path -LiteralPath $extList) -and (Test-Path -LiteralPath $extScript)) {
+    $hasEntry = Get-Content -LiteralPath $extList -ErrorAction SilentlyContinue |
+        Where-Object { $_.Trim() -ne '' -and -not $_.TrimStart().StartsWith('#') -and $_.Trim() -ne 'sources:' } |
+        Select-Object -First 1
+    if ($hasEntry) {
+        Write-Host ""
+        Write-Host "== 外部技能同步（external-skills）=="
+        try {
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $extScript apply
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "外部技能同步失败（内建技能挂载已完成）。"
+            }
+        }
+        catch {
+            Write-Warning "外部技能同步失败（内建技能挂载已完成）。$($_.Exception.Message)"
+        }
+    }
+}
