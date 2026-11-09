@@ -64,6 +64,20 @@ skills/ 按用途分二级目录，叶子目录名 = 技能名：
 - `SKILL.md` 的 frontmatter 必须包含 `updated: YYYY-MM-DD` 字段（该技能最近一次实质变更日期）。内容有实质修改时必须同步更新该日期——这是 skill 通过 IM 等渠道分发给远程 agent 后，接收方判断新旧版本的唯一依据。
 - Node ESM 脚本（`.mjs`）若需「直接运行进 CLI、被 import 只导出模块」的双模式，入口判断必须两侧 `realpathSync` 归一化：`realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))`。禁止直接比较 `import.meta.url === pathToFileURL(process.argv[1]).href`——技能经 junction 挂载运行时，`import.meta.url` 已被 node 解析为真实路径而 `argv[1]` 是链接路径，直接比较恒不等，CLI 模式会静默不执行。
 
+### 脚本语言选型
+
+技能自带可执行脚本时，按「目标宿主」决定写几版，避免后来者反复纠结「要不要写 sh 版」：
+
+| 目标宿主 | 选型 | 依据 |
+| --- | --- | --- |
+| 开发电脑（Windows / macOS / Linux 桌面） | **sh（bash 方言）+ ps1 成对** | Windows 跑 ps1、Unix 跑 bash，各自原生零依赖 |
+| 云端 / 仅 bash 宿主 | **单版 py 或 mjs**（按宿主已有运行时选一，不双写） | py 与 mjs 能力重叠，双写是重复劳动 |
+
+- **sh 版是 bash 方言**（`#!/usr/bin/env bash` + `set -euo pipefail`），不是 POSIX-only：bash 在 macOS（自带）/ Linux / WSL / Git Bash 普遍存在。编码遵守「安装脚本的编码与验证约定」（ps1 UTF-8 带 BOM / sh UTF-8 无 BOM）。
+- **缺某版必须写明理由**：如「仅 bash 宿主」场景单写一版，SKILL.md 要写明为何不写另一版，避免后来者纠结。
+- **多版契约一致**：CLI 参数、人读报告、`--json` 字段、退出码语义必须等价；验证时按 key 排序后比较，禁止直接文本 diff 多版输出。
+- **退出码语义统一**：0 成功 / 1 参数错误 / 2 无匹配数据 / 3 输入不存在或解压失败；各 skill 在 SKILL.md 声明自己的具体映射（可按语义覆盖默认值）。
+
 ### 文档语言
 - 本仓库所有说明性文档使用**简体中文**。
 
