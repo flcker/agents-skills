@@ -1,0 +1,32 @@
+# mcp-servers.yaml
+#
+# MCP 登记清单（事实源）。记录本仓库体系涉及的 MCP 及其文档地址、三分法归类。
+# 只登记「名称 + 文档地址 + 归类 + 接入元数据」；凭证值、内网端点、客户端配置不入清单。
+# 校验/管理入口：scripts/mcp-servers.{sh,ps1}（check 校验 / add 登记 / remove 移除 / list 列出）
+#
+# 三分法归类（详见 AGENTS.md「MCP 处理原则」）：
+#   guide  = 接入指南型（仓库有对应 skill 教怎么 mcp add，凭证用户手填）
+#   usage  = 使用规范型（MCP 已接入，仓库有 skill 约定工具怎么用不跑偏）
+#   direct = 脚本直调型（不挂 server，脚本直调公开 HTTP 端点）
+#
+# 字段：
+#   docs    文档地址（仓库内 skills/... 相对路径，或外部 http(s) URL）——必填
+#   pattern guide / usage / direct——必填
+#   command 启动命令（guide/usage 必填；direct 省略）；不含凭证，凭证经 env 或 docs 指向的文档
+#   env     所需凭证环境变量名，逗号分隔；只记名字，值永不入库——可选
+
+servers:
+  figma-console:
+    docs: skills/dev/figma-console-mcp/
+    pattern: guide
+    command: npx -y figma-console-mcp@latest
+    env: FIGMA_ACCESS_TOKEN, ENABLE_MCP_APPS
+
+  figma-developer:
+    docs: https://docs.framelink.ai/quickstart
+    pattern: usage
+    command: npx -y figma-developer-mcp
+
+  microsoft-learn:
+    docs: skills/dev/mslearn/
+    pattern: direct

@@ -16,6 +16,7 @@ agents-skills/
 ├── .gitignore         # Git 忽略规则
 ├── REPO_ID            # 本仓库的稳定命名空间标识（见下文「身份识别」）
 ├── external-skills.yaml   # 外部 git 技能清单（事实源，见下文「外部技能」）
+├── mcp-servers.yaml       # MCP 登记清单（事实源，见下文「MCP 登记」）
 ├── scripts/           # 分发/安装脚本 + 脱敏自检
 │   ├── install-skills.ps1   # Windows 安装脚本（PowerShell）
 │   ├── install-skills.sh    # macOS / Linux / WSL 安装脚本（bash）
@@ -24,7 +25,9 @@ agents-skills/
 │   ├── pack-skill.ps1       # Windows 打包脚本（IM 分发 zip）
 │   ├── pack-skill.sh        # macOS / Linux 打包脚本（bash）
 │   ├── check-sanitize.ps1   # 发布前脱敏自检（Windows）
-│   └── check-sanitize.sh    # 发布前脱敏自检（macOS / Linux / WSL）
+│   ├── check-sanitize.sh    # 发布前脱敏自检（macOS / Linux / WSL）
+│   ├── mcp-servers.ps1      # MCP 清单管理/校验（Windows）
+│   └── mcp-servers.sh       # MCP 清单管理/校验（macOS / Linux / WSL）
 └── skills/            # 技能存放目录（按用途分类组织，分类规则见 AGENTS.md）
     ├── dev/           # 工程开发类（目标：开发电脑）
     │   └── <skill-name>/
@@ -54,6 +57,7 @@ agents-skills/
 ### ops/ —— 运维操作
 
 - [`external-skill-manager`](skills/ops/external-skill-manager/) — 外部技能管理编排：用户给外部 skill 的 git 仓库 URL、GitHub/GitLab 仓库页或介绍网页，把输入识别为 source-ref、决定 ref 与 namespace，调用 `scripts/external-skills.{sh,ps1}` 写入 `external-skills.yaml` 并同步挂载到各 Agent；网页反爬时配合 `cdp-search-fetch` 抓取提取仓库地址。
+- [`mcp-server-manager`](skills/ops/mcp-server-manager/) — MCP 登记管理编排：用户给 MCP 名称、官方文档 URL、npx 启动命令或介绍网页，识别为 name + docs + pattern（guide/usage/direct）+ 可选 command/env，调用 `scripts/mcp-servers.{sh,ps1}` 写入 `mcp-servers.yaml` 并校验；只登记不接入，凭证只记环境变量名。
 
 ## 快速开始
 
@@ -124,6 +128,30 @@ bash scripts/external-skills.sh list
 - **冲突**：同 namespace 下同名技能视为冲突，`apply` **fail-fast**——打印冲突清单与「改 namespace」指引，本轮不挂载任何外部技能，绝不做半成品挂载或静默覆盖。
 - **接入**：`install-skills.{sh,ps1}` 会在清单非空时自动委托 `apply`（内建技能挂载完成后执行）。
 - **安全**：外部仓库不经本仓库 `check-sanitize` 校验，`apply` 也不做脱敏检查，内容安全由使用方自担。
+
+### MCP 登记
+
+MCP 是常驻进程（server），与 skill（静态文件）不同，**不通过 external-skills 分发**；仓库只登记 MCP 的元数据与文档地址，接入与使用规范仍以对应 skill 文档承载（三分法：guide 接入指南型 / usage 使用规范型 / direct 脚本直调型）。
+
+- **事实源**：`mcp-servers.yaml`，`servers:` 下每个 MCP 一个缩进块，字段：
+  - `docs`（必填）——文档地址（仓库内 `skills/...` 相对路径，或外部 http(s) URL）
+  - `pattern`（必填）——`guide` / `usage` / `direct`
+  - `command`（guide/usage 必填）——启动命令，不含凭证
+  - `env`（可选）——所需凭证环境变量名，只记名字，值永不入库
+- **安全底线**：MCP server 本体、凭证、内网端点、客户端配置一律不入仓库。
+
+管理命令（`scripts/mcp-servers.{sh,ps1}`，`check` 为缺省子命令）：
+
+```bash
+bash scripts/mcp-servers.sh check                                # 校验清单（格式/字段/文档可达/无凭证）
+bash scripts/mcp-servers.sh add <name> --docs <d> --pattern <p> [--command <c>] [--env <e>]
+bash scripts/mcp-servers.sh remove <name>                        # 移除一个 MCP
+bash scripts/mcp-servers.sh list                                 # 列出清单
+```
+
+Windows 等价：`powershell -ExecutionPolicy Bypass -File .\scripts\mcp-servers.ps1 <check|add|remove|list>`（`add` 参数用单横线：`-Docs` / `-Pattern` / `-Cmd` / `-Env`）。
+
+新增流程：agent 收到文本输入（MCP 名称 / 官方文档 URL / npx 命令）→ 按 `mcp-server-manager` skill 识别字段与 pattern → 调 `add` 写清单 → `check` 校验。拿不准 pattern 时**问用户**，不臆测。
 
 ### IM 分发（打包）
 

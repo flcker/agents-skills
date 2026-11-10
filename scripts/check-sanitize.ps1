@@ -13,6 +13,8 @@ $files = @(
         Where-Object { $_.Extension -in '.md', '.sh', '.ps1', '.mjs', '.py' }
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'scripts') -File |
         Where-Object { $_.Extension -in '.md', '.sh', '.ps1', '.mjs', '.py' }
+    Get-ChildItem -LiteralPath $repoRoot -File |
+        Where-Object { $_.Extension -eq '.yaml' }
 ) | Sort-Object FullName -Unique
 
 $secretPatterns = @(

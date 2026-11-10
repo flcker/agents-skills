@@ -106,6 +106,18 @@ skills/ 按用途分二级目录，叶子目录名 = 技能名：
 
 修改外部技能机制（脚本或清单语义）时，须同步更新 `README.md` 的「外部技能」章节与本节。
 
+### MCP 处理原则
+
+MCP 与 skill 是两类东西，**external-skills 机制管不了 MCP**：skill 是静态指令文本（放文件即分发），MCP 是常驻进程（server），需每客户端单独注册、常带凭证、工具 schema 常驻上下文。因此：
+
+- **MCP 的接入/使用规范以 skill 文档承载**，分三种姿势（三分法）：
+  - **guide 接入指南型**（例：`figma-console-mcp`）——skill 教 agent 帮用户 `mcp add`，凭证用户手填。
+  - **usage 使用规范型**（例：`figma-ui-web` / `figma-ui-desktop`）——MCP 已接入，skill 约定工具怎么用不跑偏。
+  - **direct 脚本直调型**（例：`mslearn`）——公开无认证 HTTP 端点，不挂 server，脚本直调省常驻 token。
+- **登记**：MCP 及其文档地址、三分法归类记录在根目录 `mcp-servers.yaml`（事实源），接入细节以对应 skill 文档为准，不做集中一键挂载。
+- **校验**：`scripts/mcp-servers.{sh,ps1}` 的 `check` 子命令校验清单格式、字段齐全、文档可达、无凭证泄漏（`add`/`remove`/`list` 为管理入口，见 `mcp-server-manager` skill）。
+- **安全底线**：MCP server 本体、凭证、内网端点、客户端配置**一律不入仓库**；清单只记凭证**环境变量名**，值永不入库。
+
 ### 维护与审查
 - 保持仓库整洁，不提交临时文件（遵循 `.gitignore`）。
 - **公开仓库安全底线**：提交前跑 `bash scripts/check-sanitize.sh` 确认无密钥/内网标识；内网域名后缀维护在本地 `internal-domains.txt`（不入库）。

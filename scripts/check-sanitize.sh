@@ -10,12 +10,13 @@ hits=0
 # Put one suffix per line in internal-domains.txt (gitignored).
 DOMAIN_FILE="$REPO/internal-domains.txt"
 
-# 扫描范围：skills/ 与 scripts/ 下的文本文件（.md/.sh/.ps1/.mjs/.py）
+# 扫描范围：skills/ 与 scripts/ 下的文本文件（.md/.sh/.ps1/.mjs/.py），以及根目录清单 .yaml
 shopt -s nullglob globstar
 files=()
 for f in "$REPO"/skills/**/*.md "$REPO"/skills/**/*.sh "$REPO"/skills/**/*.ps1 \
          "$REPO"/skills/**/*.mjs "$REPO"/skills/**/*.py \
-         "$REPO"/scripts/*.sh "$REPO"/scripts/*.ps1 "$REPO"/scripts/*.mjs "$REPO"/scripts/*.py; do
+         "$REPO"/scripts/*.sh "$REPO"/scripts/*.ps1 "$REPO"/scripts/*.mjs "$REPO"/scripts/*.py \
+         "$REPO"/*.yaml; do
     [ -f "$f" ] && files+=("$f")
 done
 shopt -u globstar nullglob
