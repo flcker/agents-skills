@@ -52,10 +52,34 @@ function Test-Secret([string]$Value, [string]$Where) {
 
 function Test-Docs([string]$Name, [string]$Docs) {
     if ($Docs -match '^https?://') {
-        try {
-            Invoke-WebRequest -Uri $Docs -Method Head -UseBasicParsing -TimeoutSec 15 | Out-Null
-        } catch {
-            Write-Err "$Name：docs URL 不可达（$Docs）"
+        # 外部 URL：区分「真 404/410 不可达」与「超时/限流（间歇）」。
+        # 网络类失败重试一次再报错，避免 GitHub 等站点对 HEAD 的偶发限流误报。
+        for ($attempt = 1; $attempt -le 2; $attempt++) {
+            try {
+                $resp = Invoke-WebRequest -Uri $Docs -Method Head -UseBasicParsing -TimeoutSec 15 -MaximumRedirection 5
+                $code = [int]$resp.StatusCode
+                if ($code -ge 200 -and $code -lt 400) { return }
+                if ($code -eq 404 -or $code -eq 410) {
+                    Write-Err "$Name：docs URL 不可达（$Docs，HTTP $code）"
+                    return
+                }
+                # 429/5xx 等临时错误 → 重试
+                if ($attempt -eq 1) { Start-Sleep -Seconds 1; continue }
+                Write-Err "$Name：docs URL 探测失败（$Docs，HTTP $code）"
+                return
+            } catch {
+                # Invoke-WebRequest 对 4xx/5xx 抛异常；从异常里提取状态码区分「真不可达」与「临时失败」
+                $respCode = 0
+                if ($_.Exception.Response) { $respCode = [int]$_.Exception.Response.StatusCode }
+                if ($respCode -eq 404 -or $respCode -eq 410) {
+                    Write-Err "$Name：docs URL 不可达（$Docs，HTTP $respCode）"
+                    return
+                }
+                # 网络错误/超时 → 重试一次；仍失败报「探测失败」而非「不可达」
+                if ($attempt -eq 1) { Start-Sleep -Seconds 1; continue }
+                Write-Err "$Name：docs URL 探测失败（$Docs，$($_.Exception.Message)）"
+                return
+            }
         }
     } else {
         $target = Join-Path $repoRoot ($Docs -replace '/', [IO.Path]::DirectorySeparatorChar)

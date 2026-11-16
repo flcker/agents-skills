@@ -39,13 +39,23 @@ check_secret() {
 
 # docs 指向仓库路径则须存在，指向外部 URL 则须可达
 check_docs() {
-    local name="$1" docs="$2" target
+    local name="$1" docs="$2" target code attempt
     case "$docs" in
         http://*|https://*)
-            if ! curl -fsSI --max-time 15 "$docs" >/dev/null 2>&1; then
-                err "$name：docs URL 不可达（$docs）"
-                errors=$((errors+1))
-            fi
+            # 外部 URL：区分「真 404/410 不可达」与「超时/限流（间歇）」。
+            # 网络类失败重试一次再报错，避免 GitHub 等站点对 HEAD 的偶发限流误报。
+            for attempt in 1 2; do
+                code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$docs" 2>/dev/null || true)
+                case "$code" in
+                    200|301|302|303|307|308) return 0 ;;
+                    404|410) err "$name：docs URL 不可达（$docs，HTTP $code）"; errors=$((errors+1)); return 1 ;;
+                    *)
+                        # 空 code（curl 失败/超时）或 429/5xx 等临时错误 → 重试
+                        if [ "$attempt" = 1 ]; then sleep 1; continue; fi
+                        err "$name：docs URL 探测失败（$docs${code:+，HTTP $code}）"; errors=$((errors+1)); return 1
+                        ;;
+                esac
+            done
             ;;
         *)
             target="$REPO_ROOT/$docs"

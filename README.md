@@ -180,6 +180,17 @@ Windows 等价：`powershell -ExecutionPolicy Bypass -File .\scripts\mcp-servers
 - **只声明不自动装**：需 license 手装的工具（Ghidra/IDA/JADX）标 `optional: true`，不自动装。
 - 凭证与引擎二进制不入仓库，脱敏由 `check-sanitize` 覆盖。
 
+### 新设备引导（bootstrap）
+
+新设备/新环境用一条命令把技能集投影到本机（挂载内建+外部技能、校验 MCP 清单），再集中提示需手动完成的部分：
+
+```bash
+bash scripts/bootstrap.sh          # macOS / Linux / WSL / Git Bash
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1   # Windows
+```
+
+幂等，可重复执行。**只编排 + 提示，不自动装工具、不自动注册 MCP、不存凭证**——装工具看 `tools.yaml`、填凭证看 `mcp-servers.yaml` 的 `env`、注册 MCP 按对应 skill 文档。
+
 ### IM 分发（打包）
 
 远程 agent 无法通过 git 同步、IM 又只能传压缩包时，用打包脚本把 skill 打成 zip 发送：
