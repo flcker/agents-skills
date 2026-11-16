@@ -54,6 +54,7 @@ agents-skills/
 - [`figma-ui-web`](skills/dev/figma-ui-web/) — 用 Figma 设计稿开发 Web 前端 UI 的规范：双通道阅读（`get_figma_data` 精确数据 + `download_figma_images` 视觉截图并行，禁止单通道写码）、用确切值不做视觉估算、结构分析（重复模式→组件/绝对定位→flex·grid/语义角色→框架组件）、资源下载不手绘、实现后用 Playwright 截图对比设计稿自查 + 人工挑刺迭代的验证闭环，适配 Framelink `figma-developer-mcp`。
 - [`figma-ui-desktop`](skills/dev/figma-ui-desktop/) — 用 Figma 设计稿开发桌面端 UI（Qt Widget / QML / WinUI / Flutter）的规范：框架无关的「数据→目标框架翻译」方法论，双通道阅读 + 用确切值 + 结构分析 + 「画布概念→目标框架」映射表（布局/颜色/间距/圆角/阴影/图标/状态 13 类，覆盖 Qt Widget/QML/WinUI/Flutter 四框架）+ 实际运行截图对比设计稿的验证闭环，适配 Framelink `figma-developer-mcp`。
 - [`mslearn`](skills/dev/mslearn/) — 微软官方技术文档查询：curl 直调 Microsoft Learn 公共 MCP 端点，语义搜索官方文档、搜官方代码示例（支持 cpp 等语言过滤）、抓取整篇文档转 markdown，免认证零依赖，sh/ps1 双脚本跨 Windows/macOS/Linux，替代挂 MCP server 省 1.5~2K 常驻 token。
+- [`qt-docs`](skills/dev/qt-docs/) — Qt 官方文档查询：curl/Invoke-WebRequest 直抓 doc.qt.io，支持 Qt 6.8/6.12/5.15 版本切换，枚举 C++ 类 / QML 类型 / 模块清单（classes/qmltypes/modules-cpp/modules-qml），抓取类与 QML 类型的签名、成员、属性说明转 markdown，sh/ps1 双脚本零依赖跨平台，免认证免 MCP server。
 
 ### ops/ —— 运维操作
 
