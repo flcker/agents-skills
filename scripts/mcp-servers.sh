@@ -138,6 +138,7 @@ cmd_check() {
             docs)    docs="$eval" ;;
             pattern) pattern="$eval" ;;
             command) command="$eval" ;;
+            requires) : ;;  # 只识别，不做跨文件校验（指向 tools.yaml，避免 mini-mise）
             env)     check_secret "$eval" "$name env" ;;
             *) err "未知字段 $efield（$name）"; errors=$((errors+1)) ;;
         esac

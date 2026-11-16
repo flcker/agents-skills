@@ -106,17 +106,39 @@ skills/ 按用途分二级目录，叶子目录名 = 技能名：
 
 修改外部技能机制（脚本或清单语义）时，须同步更新 `README.md` 的「外部技能」章节与本节。
 
+### 三层模型：skill / mcp / tools
+
+仓库管理三类资源，各归其位、互不合并：
+
+| 层 | 文件 | 管什么 | 本质 |
+|---|---|---|---|
+| skill | `skills/**/SKILL.md` | 指令文本（教 agent 怎么做） | 知识 |
+| MCP | `mcp-servers.yaml` | 常驻进程的注册元数据 | 进程 |
+| tool | `tools.yaml` | CLI/运行时依赖声明 | 二进制 |
+
+依赖只记单向：skill → MCP（写在 skill 的 description 里），MCP → tool（写在 `mcp-servers.yaml` 的 `requires` 字段）。不反向、不做 tool→tool 依赖图。
+
 ### MCP 处理原则
 
 MCP 与 skill 是两类东西，**external-skills 机制管不了 MCP**：skill 是静态指令文本（放文件即分发），MCP 是常驻进程（server），需每客户端单独注册、常带凭证、工具 schema 常驻上下文。因此：
 
 - **MCP 的接入/使用规范以 skill 文档承载**，分三种姿势（三分法）：
-  - **guide 接入指南型**（例：`figma-console-mcp`）——skill 教 agent 帮用户 `mcp add`，凭证用户手填。
+  - **guide 接入指南型**（例：`figma-console-mcp`、`rea-agents`）——skill 教 agent 帮用户 `mcp add`，凭证用户手填。
   - **usage 使用规范型**（例：`figma-ui-web` / `figma-ui-desktop`）——MCP 已接入，skill 约定工具怎么用不跑偏。
   - **direct 脚本直调型**（例：`mslearn`）——公开无认证 HTTP 端点，不挂 server，脚本直调省常驻 token。
 - **登记**：MCP 及其文档地址、三分法归类记录在根目录 `mcp-servers.yaml`（事实源），接入细节以对应 skill 文档为准，不做集中一键挂载。
+- **依赖声明**：`requires` 字段列出该 MCP 运行需要的工具名（指向 `tools.yaml`），只做登记不做跨文件校验。
 - **校验**：`scripts/mcp-servers.{sh,ps1}` 的 `check` 子命令校验清单格式、字段齐全、文档可达、无凭证泄漏（`add`/`remove`/`list` 为管理入口，见 `mcp-server-manager` skill）。
 - **安全底线**：MCP server 本体、凭证、内网端点、客户端配置**一律不入仓库**；清单只记凭证**环境变量名**，值永不入库。
+
+### 工具依赖（tools）
+
+技能集需要的运行时/CLI 工具（node、bun、uv、ghidra 等）声明在根目录 `tools.yaml`（事实源）。组织方式借鉴 mise 的 `[tools]` 段：顶层 `tools:` 下每个工具一个缩进块，字段 `version`（版本约束，可选）、`optional`（true 用到才装 / false 基础前提）、`purpose`（用途，可选）。
+
+- **只放工具/运行时**：MCP server 不在此清单（进 `mcp-servers.yaml`）。
+- **只声明版本，不写 manager**：获取方式由设备自决（nvm/fnm/npm/bun/uv…各自已有），不在清单里写死。
+- **只声明不自动装**：`tools.yaml` 是声明层，不执行安装；需 license 手装的工具（Ghidra/IDA/JADX）标 `optional: true`。
+- 凭证与引擎二进制不入仓库，脱敏由 `check-sanitize` 覆盖（已扫根目录 `.yaml`）。
 
 ### 维护与审查
 - 保持仓库整洁，不提交临时文件（遵循 `.gitignore`）。

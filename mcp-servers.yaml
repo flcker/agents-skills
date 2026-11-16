@@ -4,28 +4,40 @@
 # 只登记「名称 + 文档地址 + 归类 + 接入元数据」；凭证值、内网端点、客户端配置不入清单。
 # 校验/管理入口：scripts/mcp-servers.{sh,ps1}（check 校验 / add 登记 / remove 移除 / list 列出）
 #
+# 三层模型（详见 AGENTS.md）：skill（指令文本）→ mcp-servers.yaml（进程注册）→ tools.yaml（二进制依赖）。
+# MCP 运行需要的工具/运行时，用 requires 指向 tools.yaml 里的工具名（单向依赖，不反向、不跨层自动校验）。
+#
 # 三分法归类（详见 AGENTS.md「MCP 处理原则」）：
 #   guide  = 接入指南型（仓库有对应 skill 教怎么 mcp add，凭证用户手填）
 #   usage  = 使用规范型（MCP 已接入，仓库有 skill 约定工具怎么用不跑偏）
 #   direct = 脚本直调型（不挂 server，脚本直调公开 HTTP 端点）
 #
 # 字段：
-#   docs    文档地址（仓库内 skills/... 相对路径，或外部 http(s) URL）——必填
-#   pattern guide / usage / direct——必填
-#   command 启动命令（guide/usage 必填；direct 省略）；不含凭证，凭证经 env 或 docs 指向的文档
-#   env     所需凭证环境变量名，逗号分隔；只记名字，值永不入库——可选
+#   docs     文档地址（仓库内 skills/... 相对路径，或外部 http(s) URL）——必填
+#   pattern  guide / usage / direct——必填
+#   command  启动命令（guide/usage 必填；direct 省略）；不含凭证，凭证经 env 或 docs 指向的文档
+#   requires 该 MCP 运行需要的工具名列表（指向 tools.yaml；direct 型通常省略）——可选
+#   env      所需凭证环境变量名，逗号分隔；只记名字，值永不入库——可选
 
 servers:
   figma-console:
     docs: skills/dev/figma-console-mcp/
     pattern: guide
     command: npx -y figma-console-mcp@latest
+    requires: [node]
     env: FIGMA_ACCESS_TOKEN, ENABLE_MCP_APPS
 
   figma-developer:
     docs: https://docs.framelink.ai/quickstart
     pattern: usage
     command: npx -y figma-developer-mcp
+    requires: [node]
+
+  rea-agents:
+    docs: https://github.com/morluto/rea
+    pattern: guide
+    command: npx -y rea-agents@6.5.0
+    requires: [node]
 
   microsoft-learn:
     docs: skills/dev/mslearn/

@@ -17,6 +17,7 @@ agents-skills/
 ├── REPO_ID            # 本仓库的稳定命名空间标识（见下文「身份识别」）
 ├── external-skills.yaml   # 外部 git 技能清单（事实源，见下文「外部技能」）
 ├── mcp-servers.yaml       # MCP 登记清单（事实源，见下文「MCP 登记」）
+├── tools.yaml             # 工具依赖声明（事实源，见下文「工具依赖」）
 ├── scripts/           # 分发/安装脚本 + 脱敏自检
 │   ├── install-skills.ps1   # Windows 安装脚本（PowerShell）
 │   ├── install-skills.sh    # macOS / Linux / WSL 安装脚本（bash）
@@ -129,6 +130,18 @@ bash scripts/external-skills.sh list
 - **接入**：`install-skills.{sh,ps1}` 会在清单非空时自动委托 `apply`（内建技能挂载完成后执行）。
 - **安全**：外部仓库不经本仓库 `check-sanitize` 校验，`apply` 也不做脱敏检查，内容安全由使用方自担。
 
+### 三层模型：skill / mcp / tools
+
+仓库管理三类资源，各归其位、互不合并：
+
+| 层 | 文件 | 管什么 |
+|---|---|---|
+| skill | `skills/**/SKILL.md` | 指令文本（教 agent 怎么做） |
+| MCP | `mcp-servers.yaml` | 常驻进程的注册元数据 |
+| tool | `tools.yaml` | CLI/运行时依赖声明 |
+
+依赖只记单向：skill → MCP（写在 skill 的 description 里），MCP → tool（`mcp-servers.yaml` 的 `requires` 字段）。
+
 ### MCP 登记
 
 MCP 是常驻进程（server），与 skill（静态文件）不同，**不通过 external-skills 分发**；仓库只登记 MCP 的元数据与文档地址，接入与使用规范仍以对应 skill 文档承载（三分法：guide 接入指南型 / usage 使用规范型 / direct 脚本直调型）。
@@ -137,6 +150,7 @@ MCP 是常驻进程（server），与 skill（静态文件）不同，**不通�
   - `docs`（必填）——文档地址（仓库内 `skills/...` 相对路径，或外部 http(s) URL）
   - `pattern`（必填）——`guide` / `usage` / `direct`
   - `command`（guide/usage 必填）——启动命令，不含凭证
+  - `requires`（可选）——该 MCP 运行需要的工具名列表，指向 `tools.yaml`
   - `env`（可选）——所需凭证环境变量名，只记名字，值永不入库
 - **安全底线**：MCP server 本体、凭证、内网端点、客户端配置一律不入仓库。
 
@@ -152,6 +166,19 @@ bash scripts/mcp-servers.sh list                                 # 列出清单
 Windows 等价：`powershell -ExecutionPolicy Bypass -File .\scripts\mcp-servers.ps1 <check|add|remove|list>`（`add` 参数用单横线：`-Docs` / `-Pattern` / `-Cmd` / `-Env`）。
 
 新增流程：agent 收到文本输入（MCP 名称 / 官方文档 URL / npx 命令）→ 按 `mcp-server-manager` skill 识别字段与 pattern → 调 `add` 写清单 → `check` 校验。拿不准 pattern 时**问用户**，不臆测。
+
+### 工具依赖
+
+技能集需要的运行时/CLI 工具（node、bun、uv、ghidra 等）声明在 `tools.yaml`（事实源）。组织方式借鉴 mise 的 `[tools]` 段：顶层 `tools:` 下每个工具一个缩进块。
+
+- **字段**：
+  - `version`（可选）——版本约束，如 `>=22`、`6.5.0`；省略 = 无约束
+  - `optional`（bool）——`true` 用到才装 / `false` 整套技能集的基础前提
+  - `purpose`（可选）——用途说明
+- **只放工具/运行时**：MCP server 不在此清单（进 `mcp-servers.yaml`）。
+- **只声明版本，不写 manager**：获取方式由设备自决（nvm/fnm/npm/bun/uv…各自已有）。
+- **只声明不自动装**：需 license 手装的工具（Ghidra/IDA/JADX）标 `optional: true`，不自动装。
+- 凭证与引擎二进制不入仓库，脱敏由 `check-sanitize` 覆盖。
 
 ### IM 分发（打包）
 

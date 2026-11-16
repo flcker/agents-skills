@@ -133,6 +133,7 @@ function Invoke-Check {
             'docs'    { $docs = $r.Value }
             'pattern' { $pattern = $r.Value }
             'command' { $command = $r.Value }
+            'requires' { } # 只识别，不做跨文件校验（指向 tools.yaml，避免 mini-mise）
             'env'     { Test-Secret $r.Value "$name env" }
             default   { Write-Err "未知字段 $($r.Field)（$name）" }
         }

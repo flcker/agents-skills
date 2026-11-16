@@ -1,0 +1,24 @@
+# tools.yaml — 工具依赖声明（事实源）
+#
+# 借鉴 mise.toml 的 [tools] 组织方式：顶层 tools: 下每个工具一个缩进块。
+# 只声明「要什么版本」，不写 manager——获取方式由设备自决（nvm/fnm/npm/bun/uv…）。
+#
+# 三层模型（详见 AGENTS.md）：skill（指令文本）→ mcp-servers.yaml（进程注册）→ tools.yaml（二进制依赖）。
+# 本清单只放「工具/运行时」，MCP server 不进这里（进 mcp-servers.yaml）。
+#
+# 字段：
+#   version  版本约束（可选，省略 = 无约束），如 ">=22"、"6.5.0"
+#   optional true = 用到才装 / false = 整套技能集的基础前提（可选，缺省 true）
+#   purpose  用途说明（可选）
+#
+# 脱敏：本文件会被 scripts/check-sanitize.{sh,ps1} 扫描，不得含凭证/内网标识。
+
+tools:
+  node:
+    version: ">=22"
+    optional: false
+    purpose: 多个 MCP（figma-console、rea-agents）npx 启动、cdp-search-fetch 的运行前提
+
+  ghidra:
+    optional: true
+    purpose: REA native 分析引擎之一，需 license 手装
