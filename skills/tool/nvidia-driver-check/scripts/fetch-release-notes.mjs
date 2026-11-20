@@ -315,19 +315,38 @@ function normalize(s) {
 }
 
 // ---------------------------------------------------------------------------
-// 从扁平文本行提取 "3.2 Open Issues" 小节的 bullet 条目。
-// 判定「正文标题」（非目录页）：行首 `3.2` + `Open Issues` 且不含目录点线 `..`。
+// 从扁平文本行提取 "Open Issues" 小节的 bullet 条目。
+// 两种分支标题不同（判定「正文标题」，排除目录页的 `..` 点线行）：
+//   - GeForce 分支：`3.2 Open Issues in Version <v> WHQL`
+//   - RTX Enterprise/Quadro 分支：`2.2.2 Open Issues in Version <v>`
+// 返回 { bullets, branch }；未找到小节返回 null。
 // ---------------------------------------------------------------------------
 function collectOpenIssues(flat) {
+  const isGeforceHeading = (t) => /^3\.2\s+Open Issues/i.test(t) && !t.includes('..');
+  const isQuadroHeading  = (t) => /^2\.2\.2\s+Open Issues/i.test(t) && !t.includes('..');
+
   let start = -1;
+  let branch = null;
   for (let i = 0; i < flat.length; i++) {
     const t = flat[i];
-    if (/^3\.2\s+Open Issues/i.test(t) && !t.includes('..')) { start = i; break; }
+    if (isGeforceHeading(t)) { start = i; branch = 'geforce'; break; }
+    if (isQuadroHeading(t)) { start = i; branch = 'quadro'; break; }
   }
   if (start < 0) return null;
 
-  const isStop = (t) => /^3\.3\s+Issues Not Caused/i.test(t) && !t.includes('..');
-  const isFooter = (t) => /^RN-/.test(t) || /^Release\s+\d+/.test(t) || /^NVIDIA\s*Corporation/.test(t);
+  // 停止边界：GeForce 是 `3.3 Issues Not Caused`；Quadro 是 `2.3` 或 `Chapter 3`。
+  const isStop = (t) => {
+    if (t.includes('..')) return false;
+    if (branch === 'geforce') return /^3\.3\s+Issues Not Caused/i.test(t);
+    if (branch === 'quadro') return /^2\.3\b/.test(t) || /^Chapter\s+3\b/i.test(t);
+    return false;
+  };
+  const isFooter = (t) =>
+    /^RN-/.test(t) ||
+    /^Release\s+\d+/.test(t) ||
+    /^NVIDIA\s*(Corporation|RTX)/.test(t) ||   // GeForce 版权页脚 / Quadro 页眉
+    /^http:\/\//.test(t) ||                      // Quadro 页脚 URL
+    /^:\s*$/.test(t);                            // 页码列残留
   const isHeading = (t) => /^\d+(\.\d+)*\s/.test(t);
 
   const bullets = [];
@@ -343,7 +362,7 @@ function collectOpenIssues(flat) {
     }
   }
   if (cur !== null) bullets.push(cur);
-  return bullets.map(normalize);
+  return { bullets: bullets.map(normalize), branch };
 }
 
 // ---------------------------------------------------------------------------
@@ -362,6 +381,41 @@ async function fetchPdf(url) {
 }
 
 // ---------------------------------------------------------------------------
+// 探测驱动 exe 直链：按分支拼候选，命中 200 且体积 > 1MB 才算有效。
+// exe 缺失不算脚本失败（release notes 才是主目标），返回 null。
+// ---------------------------------------------------------------------------
+function buildDriverCandidates(version, branch) {
+  if (branch === 'quadro') {
+    return [
+      `${BASE_URL}Quadro_Certified/${version}/${version}-quadro-rtx-desktop-notebook-win10-win11-64bit-international-dch-whql.exe`,
+    ];
+  }
+  // GeForce：DCH WHQL 优先，其次 Studio/NSD DCH。
+  return [
+    `${BASE_URL}${version}/${version}-desktop-win10-win11-64bit-international-dch-whql.exe`,
+    `${BASE_URL}${version}/${version}-desktop-win10-win11-64bit-international-nsd-dch-whql.exe`,
+  ];
+}
+
+async function probeDriverUrl(version, branch) {
+  for (const url of buildDriverCandidates(version, branch)) {
+    try {
+      // HEAD 优先（省流量）；部分 CDN 对 HEAD 行为异常则退回 GET。
+      let res = await fetch(url, { headers: HEADERS, method: 'HEAD', redirect: 'follow' });
+      if (res.status !== 200) {
+        res = await fetch(url, { headers: HEADERS, redirect: 'follow' });
+        if (res.status !== 200) continue;
+      }
+      const len = parseInt(res.headers.get('content-length') || '0', 10);
+      if (len > 1024 * 1024) return url; // >1MB 判有效（避免把错误页当 exe）
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 async function main(argv) {
@@ -372,10 +426,12 @@ async function main(argv) {
   if (!version) { console.error('缺少版本号参数。\n' + USAGE); process.exit(1); }
   if (!/^\d+\.\d+(\.\d+)*$/.test(version)) { console.error(`无效版本号: ${version}\n` + USAGE); process.exit(1); }
 
-  // 候选 URL：Studio/NSD 优先，其次 Game Ready。
+  // 候选 URL：GeForce Studio/NSD 优先，其次 Game Ready，最后 RTX Enterprise/Quadro（专业卡）。
+  // 注意：Quadro 分支 release notes 在 Quadro_Certified/ 子目录，文件名含 nvidia-rtx-quadro。
   const candidates = [
-    `${BASE_URL}${version}/${version}-win10-win11-nsd-release-notes.pdf`, // Studio/NSD
-    `${BASE_URL}${version}/${version}-win11-win10-release-notes.pdf`,     // Game Ready
+    `${BASE_URL}${version}/${version}-win10-win11-nsd-release-notes.pdf`,                        // GeForce Studio/NSD
+    `${BASE_URL}${version}/${version}-win11-win10-release-notes.pdf`,                            // GeForce Game Ready
+    `${BASE_URL}Quadro_Certified/${version}/${version}-win10-win11-nvidia-rtx-quadro-release-notes.pdf`, // RTX Enterprise/Quadro
   ];
 
   let buf = null;
@@ -406,18 +462,25 @@ async function main(argv) {
   const dateRe = /RN-[^\s|]+\s*\|\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/;
   for (const l of flat) { const m = l.match(dateRe); if (m) { releaseDate = m[1]; break; } }
 
-  const openIssues = collectOpenIssues(flat);
-  if (openIssues === null) {
-    console.error(`未在 PDF 中找到 "3.2 Open Issues" 小节（PDF 结构可能已变化）。`);
+  const collected = collectOpenIssues(flat);
+  if (collected === null) {
+    console.error(`未在 PDF 中找到 Open Issues 小节（PDF 结构可能已变化）。`);
     process.exit(2);
   }
+  const openIssues = collected.bullets;
 
-  const result = { version, pdfUrl, releaseDate, openIssues };
+  // 驱动 exe 直链（探测失败为 null，不阻塞）
+  const driverUrl = await probeDriverUrl(version, collected.branch);
+
+  const result = { version, pdfUrl, releaseDate, branch: collected.branch, driverUrl, openIssues };
   if (json) {
     console.log(JSON.stringify(result));
   } else {
+    const branchLabel = collected.branch === 'quadro' ? 'RTX Enterprise/Quadro' : 'GeForce';
     console.log(`版本: ${result.version}`);
+    console.log(`分支: ${branchLabel}`);
     console.log(`发布日期: ${result.releaseDate || '未知'}`);
+    console.log(`驱动下载: ${result.driverUrl || '未找到'}`);
     console.log('Open Issues:');
     for (const it of result.openIssues) console.log(`  - ${it}`);
   }

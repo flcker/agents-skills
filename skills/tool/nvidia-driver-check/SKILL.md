@@ -1,7 +1,7 @@
 ---
 name: nvidia-driver-check
 updated: 2026-11-20
-description: 查询 NVIDIA GeForce 驱动版本问题、选取驱动版本、获取 release notes 下载地址。抓取 NVIDIA 官方 release notes PDF（内置 Referer 绕过反爬）并自提取 "Open Issues" 小节条目，用于判断某版本是否有伤硬件 bug、是否有同路径崩溃报告。零依赖（Node 22+ 内置 fetch + node:zlib），无 pdftotext、无 npm 依赖。触发场景：用户提到"NVIDIA 驱动""GeForce 驱动版本""驱动更新要不要装""驱动下载地址""open issue""写盘 bug""nvoglv64 崩溃"等。
+description: 查询 NVIDIA 驱动（GeForce / RTX Enterprise-Quadro 两分支）版本问题、选取驱动版本、获取 release notes 下载地址。抓取 NVIDIA 官方 release notes PDF（内置 Referer 绕过反爬）并自提取 "Open Issues" 小节条目，用于判断某版本是否有伤硬件 bug、是否有同路径崩溃报告。零依赖（Node 22+ 内置 fetch + node:zlib），无 pdftotext、无 npm 依赖。触发场景：用户提到"NVIDIA 驱动""GeForce 驱动版本""RTX/Quadro 驱动""驱动更新要不要装""驱动下载地址""open issue""写盘 bug""nvoglv64 崩溃"等。
 ---
 
 # NVIDIA 驱动版本检查
@@ -19,17 +19,34 @@ node <skill>/scripts/fetch-release-notes.mjs 617.42
 node <skill>/scripts/fetch-release-notes.mjs 617.42 --json
 ```
 
-- 默认 stdout 打印：版本号、发布日期、Open Issues 列表（每行一条，含 `[bug id]`）。
-- `--json` 输出结构化 `{version, pdfUrl, releaseDate, openIssues: [...]}`。
+- 默认 stdout 打印：版本号、分支、发布日期、驱动 exe 直链、Open Issues 列表（每行一条，含 `[bug id]`）。
+- `--json` 输出结构化 `{version, pdfUrl, releaseDate, branch, driverUrl, openIssues: [...]}`。
 - 退出码：`0` 成功 / `1` 参数错误 / `2` 抓取或 PDF 无效 / `3` 网络失败。
 
 ## URL 规律与探测
 
-- 基址：`https://us.download.nvidia.com/Windows/<版本>/`
+- 基址：`https://us.download.nvidia.com/Windows/`
 - 文件名后缀不固定，按顺序探测（实测结论）：
-  1. Studio/NSD 版：`<版本>-win10-win11-nsd-release-notes.pdf`
-  2. Game Ready 版：`<版本>-win11-win10-release-notes.pdf`
+  1. GeForce Studio/NSD 版：`<版本>/<版本>-win10-win11-nsd-release-notes.pdf`
+  2. GeForce Game Ready 版：`<版本>/<版本>-win11-win10-release-notes.pdf`
+  3. RTX Enterprise/Quadro 版（专业卡）：`Quadro_Certified/<版本>/<版本>-win10-win11-nvidia-rtx-quadro-release-notes.pdf`
 - 命中判定：HTTP 200 + `Content-Type: application/pdf` + 首 5 字节 `%PDF-`，才算命中，否则换下一个候选。
+
+> ⚠️ **两条分支**：GeForce 家用卡走前两条；RTX A 系列 / RTX PRO / Quadro 等**专业卡走第 3 条 Quadro 分支**，release notes 在 `Quadro_Certified/` 子目录。脚本按顺序探测，命中哪条就标注哪个分支（输出里 `分支: GeForce` 或 `分支: RTX Enterprise/Quadro`）。
+
+**Open Issues 标题差异**（脚本已适配）：
+
+| 分支 | Open Issues 小节标题 |
+|---|---|
+| GeForce | `3.2 Open Issues in Version <v> WHQL` |
+| Quadro | `2.2.2 Open Issues in Version <v>` |
+
+**驱动 exe 直链命名**（脚本探测 `driverUrl`，缺失返回 `未找到`/`null` 不阻塞）：
+
+| 分支 | exe 文件名 |
+|---|---|
+| GeForce | `<v>-desktop-win10-win11-64bit-international-dch-whql.exe`（缺则 `<v>-desktop-win10-win11-64bit-international-nsd-dch-whql.exe`） |
+| Quadro | `<v>-quadro-rtx-desktop-notebook-win10-win11-64bit-international-dch-whql.exe` |
 
 ## Referer 绕过（已实测）
 
@@ -51,7 +68,7 @@ Referer 是关键，UA 兜底。脚本已内置，无需额外传参。
 3. 对象流 ObjStm：字体字典被压进 `<</Type/ObjStm/N 6>>`，`x 0 obj` 明文找不到，需识别 ObjStm 解压取出对象。
 4. 字符级排版：每字符独立 + `Tm`/`Td` 坐标移动拼出，按文本矩阵坐标聚类成行/段落还原。
 5. 字体编码：ToUnicode 出现 0 次，字体为内嵌 TrueType；原始 PDF 是 WinAnsi/CP1252 编码，用 `TextDecoder('windows-1252')` 覆盖 ASCII（open issues 是纯英文）。非 ASCII 场景未处理，遇到乱码是已知限制。
-6. 目标小节：定位 `3.2 Open Issues in Version <版本> WHQL` 正文标题（排除目录页的 `..` 点线行），提取 `>` 缩进条目。
+6. 目标小节：定位 Open Issues 正文标题（排除目录页的 `..` 点线行）——GeForce 是 `3.2 Open Issues in Version <v> WHQL`，Quadro 是 `2.2.2 Open Issues in Version <v>`——提取 `>` 缩进条目。
 
 ## 版本选取决策框架（不是写死结论）
 

@@ -8,6 +8,13 @@
 | 610.88 | 同上，同样只有 `6007998` 一条 | 与 617.42 一致。 |
 | 621.14 | 官方写 `N/A` | **官方列表不可信**：实测崩溃 + 媒体实锤写盘 bug，官方"无 open issue"不代表安全。 |
 
+### RTX Enterprise / Quadro 分支（专业卡）
+
+| 版本 | Open Issues（官方原文，核对于 2026-11-20） | 备注 |
+|---|---|---|
+| 597.30 | `No open issues to highlight.` | RTX Enterprise Release 595，支持 RTX A500 Laptop GPU 等专业卡。 |
+| 582.99 | `No open issues to highlight in this release.` | RTX Enterprise Release 580。 |
+
 ## 说明
 
 - 上表"官方原文"均来自 NVIDIA 官方 release notes PDF 的 `3.2 Open Issues` 小节。
