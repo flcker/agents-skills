@@ -93,7 +93,18 @@ Referer 是关键，UA 兜底。脚本已内置，无需额外传参。
 
 ## 为什么只写 mjs 单版（不写 sh/ps1/py）
 
-按本仓库选型表，开发电脑工具默认「sh + ps1 成对」。但本 skill 的核心能力——**零依赖 PDF 解压（`zlib.inflate`）**——只有 Node 内置：bash 无 inflate、Windows PowerShell 5.1 无原生 inflate，二者都只能放弃零依赖去调外部 `pdftotext`，违反本 skill 的硬约束。而「云端 / 仅 bash 宿主」场景又不适用（查驱动是开发机任务）。因此只写 mjs 单版，零依赖、跨平台（Windows/macOS/Linux 有 Node 即可跑），避免后来者纠结是否补写 sh/ps1 版。
+按本仓库选型表，开发电脑工具默认「sh + ps1 成对」。本 skill 只写 mjs 单版，理由如下（2026-11-20 实测核实）：
+
+1. **解压能力不是分水岭，选型不取决于「有没有 inflate」**：NVIDIA 这批 PDF 的 FlateDecode 流全是 **raw deflate（无 zlib 头）**，实测 126 个流无一 0x78 头。据此：
+   - Node `zlib.inflateSync` ✅ 原生支持（含 raw deflate）
+   - PowerShell 5.1 的 `DeflateStream` ✅ 也能解 raw deflate（无 `ZLibStream`，但用不上 zlib 头）
+   - bash ❌ 无任何 inflate 能力，只能调外部命令，**直接违反零依赖**，故 sh 版排除
+
+2. **真正的成本在解压之后**：ObjStm 对象流解析、`Tm`/`Td` 文本矩阵坐标聚类、逐页合并防 footer 串页、GeForce/Quadro 双分支标题识别、页脚过滤——约 400 行已写透验证的逻辑。用 ps1 重写一遍需额外处理 PS 5.1/7 双版本差异与二进制/正则的笨拙，维护成本高、收益低。
+
+3. **宿主前提**：查驱动是开发机任务，本仓库（含 cdp-search-fetch 等同类）已以 Node 22+ 为前提；开发机没有 Node 的场景几乎不存在。
+
+**结论**：只写 mjs 单版是**维护成本取舍**，不是被技术硬约束逼出来的。若后续出现「只有 PowerShell、无 Node」的真实宿主需求，可补 ps1 版（用 `DeflateStream` 解 raw deflate），届时与 mjs 契约一致（参数/JSON 字段/退出码）。
 
 ## 资源文件
 
