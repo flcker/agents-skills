@@ -34,7 +34,11 @@ agents-skills/
     │   └── <skill-name>/
     │       ├── SKILL.md        # 技能说明与指令（核心文件）
     │       └── references/     # 技能参考资源（可选，按需加载）
-    └── ops/           # 运维操作类（目标：开发电脑）
+    ├── ops/           # 运维操作类（目标：开发电脑）
+    │   └── <skill-name>/
+    │       ├── SKILL.md
+    │       └── references/     # 技能参考资源（可选，按需加载）
+    └── tool/          # 业务无关的操作工具类（目标：开发电脑）
         └── <skill-name>/
             ├── SKILL.md
             └── references/     # 技能参考资源（可选，按需加载）
@@ -60,6 +64,10 @@ agents-skills/
 
 - [`external-skill-manager`](skills/ops/external-skill-manager/) — 外部技能管理编排：用户给外部 skill 的 git 仓库 URL、GitHub/GitLab 仓库页或介绍网页，把输入识别为 source-ref、决定 ref 与 namespace，调用 `scripts/external-skills.{sh,ps1}` 写入 `external-skills.yaml` 并同步挂载到各 Agent；网页反爬时配合 `cdp-search-fetch` 抓取提取仓库地址。
 - [`mcp-server-manager`](skills/ops/mcp-server-manager/) — MCP 登记管理编排：用户给 MCP 名称、官方文档 URL、npx 启动命令或介绍网页，识别为 name + docs + pattern（guide/usage/direct）+ 可选 command/env，调用 `scripts/mcp-servers.{sh,ps1}` 写入 `mcp-servers.yaml` 并校验；只登记不接入，凭证只记环境变量名。
+
+### tool/ —— 业务无关的操作工具类
+
+- [`nvidia-driver-check`](skills/tool/nvidia-driver-check/) — 查询 NVIDIA GeForce 驱动版本问题、选取版本、获取 release notes 下载地址：抓取官方 release notes PDF（内置 `Referer: https://www.nvidia.com/` 绕过 `Zen/4.3` 反爬，否则 403）并自提取 "3.2 Open Issues" 小节条目（纯 Node 内置 `node:zlib` 解压 + 文本矩阵坐标聚类，无 pdftotext、零 npm 依赖），内置版本选取决策框架（证据分级 + 伤硬件/同路径崩溃/良性 open issue 三判定维度），**明确警告官方 open issue 写 N/A 不可信**（实测 621.14 官方写 N/A 但真实写盘+崩溃）；`references/version-notes.md` 沉淀已核对结论（617.42/610.88 各仅 6007998 一条、621.14 官方列表不可信）；只写 mjs 单版，理由见 SKILL.md。
 
 ## 快速开始
 
