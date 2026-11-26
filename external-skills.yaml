@@ -24,7 +24,9 @@ host-aliases:
 
 skill-filters:
   humanlayer: show-me
+  mattpocock: codebase-design, diagnosing-bugs, grilling, tdd, research
 
 sources:
   auto: github:nothing0here/humanizer-zh
   humanlayer: github:humanlayer/skills
+  mattpocock: github:mattpocock/skills@v1.3.2

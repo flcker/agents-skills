@@ -41,6 +41,9 @@
 
 set -euo pipefail
 
+# Git Bash / MSYS 下 HOME 可能未导出（set -u 会报 unbound variable），回退到 USERPROFILE。
+export HOME="${HOME:-$USERPROFILE}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 MANIFEST="$REPO_ROOT/external-skills.yaml"

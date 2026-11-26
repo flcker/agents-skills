@@ -37,6 +37,9 @@
 
 set -euo pipefail
 
+# Git Bash / MSYS 下 HOME 可能未导出（set -u 会报 unbound variable），回退到 USERPROFILE。
+export HOME="${HOME:-$USERPROFILE}"
+
 # 解析参数：--profile <分类>（只挂载该分类下的技能）；--sync（兼容别名，清理已并入默认行为）
 SYNC=0
 PROFILE=""
