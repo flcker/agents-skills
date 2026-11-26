@@ -96,12 +96,12 @@ function Read-Manifest {
 function Resolve-SourceRef([string]$Src) {
     $src = $Src
     if ($src -match '^github:' -or $src -match '^gitlab:') {
-        $host = ($src -split ':', 2)[0]
+        $hName = ($src -split ':', 2)[0]
         $rest = ($src -split ':', 2)[1]
-        $host = if ($host -eq 'github') { 'github.com' } else { 'gitlab.com' }
+        $hName = if ($hName -eq 'github') { 'github.com' } else { 'gitlab.com' }
         $repo = $rest; $ref = 'HEAD'
         if ($rest -match '^(.*?)@(.*)$') { $repo = $Matches[1]; $ref = $Matches[2] }
-        return @{ Url = "https://${host}/${repo}.git"; Ref = $ref }
+        return @{ Url = "https://${hName}/${repo}.git"; Ref = $ref }
     }
     if ($src -match '^https?://|^ssh://|^file://') {
         $url = $src; $ref = 'HEAD'
