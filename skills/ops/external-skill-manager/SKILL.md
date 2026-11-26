@@ -1,12 +1,14 @@
 ---
 name: external-skill-manager
-updated: 2026-11-07
+updated: 2026-11-26
 description: 用户给外部 skill 的 git 仓库 URL、GitHub/GitLab 仓库页、或提到某 skill 的网页，要求「接入/导入/安装/管理这个外部 skill」时使用。负责把输入识别为 source-ref、决定 ref 与 namespace、调用本仓库 scripts/external-skills.{sh,ps1} 写入清单并同步挂载到各 Agent。触发场景：用户贴 skill 仓库地址或介绍网页、说「把 xxx 这个 skill 装进来」「导入/接入外部技能」「管理外部 skill」，或要查/移除已接入的外部技能。
 ---
 
 # 外部技能管理
 
 把「用户给的 URL 或网页」翻译成外部技能清单（`external-skills.yaml`）里的一条 source-ref，并调用仓库脚本完成同步与挂载。本 skill 是**编排层**：所有实际动作复用 `scripts/external-skills.{sh,ps1}`，不复制脚本、不手写 clone/挂载逻辑。
+
+> 边界：本 skill 只编排本仓库 external-skills 机制；`npx skills`（skills.sh 生态）的个人本机安装不属于本 skill 职责，两套机制不互通，不要混用。
 
 ## 前置：定位 agents-skills 仓库根
 

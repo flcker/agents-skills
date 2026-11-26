@@ -7,6 +7,9 @@
 # 仅适用于 Windows（PowerShell 5.1+ 或 PowerShell 7+）。macOS / Linux / WSL 请用
 # external-skills.sh。
 #
+# 边界：本脚本只管理 external-skills 机制；`npx skills`（skills.sh 生态）是独立的
+# 个人本机包管理器，不归本脚本处理，两套机制不互通。
+#
 # 用法（在 agent-skills 仓库根目录执行）：
 #   powershell -ExecutionPolicy Bypass -File .\scripts\external-skills.ps1 apply
 #   powershell -ExecutionPolicy Bypass -File .\scripts\external-skills.ps1 add <source-ref> -Namespace N

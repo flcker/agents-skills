@@ -139,6 +139,10 @@ bash scripts/external-skills.sh list
 - **接入**：`install-skills.{sh,ps1}` 会在清单非空时自动委托 `apply`（内建技能挂载完成后执行）。
 - **安全**：外部仓库不经本仓库 `check-sanitize` 校验，`apply` 也不做脱敏检查，内容安全由使用方自担。
 
+### 与通用 Skills CLI（npx skills）的边界
+
+本仓库只通过 `external-skills.yaml` 管理外部技能，这是「声明式清单、随仓库分发、团队共享」的机制。`npx skills`（skills.sh 生态）是个人本机包管理器：装到本机 skill 根目录，不进本仓库清单，也不随仓库分发。要团队共享、进仓库 → external-skills；只要自己本机用 → `npx skills`。两者不互通，不要混用。
+
 ### 三层模型：skill / mcp / tools
 
 仓库管理三类资源，各归其位、互不合并：

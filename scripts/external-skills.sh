@@ -8,6 +8,9 @@
 #
 # 适用于 macOS / Linux / WSL。Windows 原生 PowerShell 请用 external-skills.ps1。
 #
+# 边界：本脚本只管理 external-skills 机制；`npx skills`（skills.sh 生态）是独立的
+# 个人本机包管理器，不归本脚本处理，两套机制不互通。
+#
 # 用法（在 agent-skills 仓库根目录执行）：
 #   bash scripts/external-skills.sh apply                     # 同步 + 冲突预检 + 挂载（缺省）
 #   bash scripts/external-skills.sh add <source-ref> [--namespace N]
