@@ -30,8 +30,10 @@
 #
 # namespace 规则：
 #   - 清单内每行 "namespace: source-ref"（YAML 受限子集，支持 # 整行注释）。
-#   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 host缩写.owner.repo
-#     推导（github.com→gh、gitlab.com→glab）；仍无法推导（未知 host）则回退按 URL 生成 slug。
+#   - 清单另含 host-aliases: 段（可省），格式 "host: 别名"，覆盖内置默认
+#     github.com→gh、gitlab.com→glab。
+#   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 host别名.owner.repo
+#     推导（host 查 host-aliases 段 → 内置默认 → 仍无则回退按 URL 生成 slug）。
 #   - namespace 是"每源一个"的挂载前缀；同 namespace 下同名技能视为冲突（fail-fast，
 #     本轮不挂载任何外部技能，并打印改 namespace 的修复指引）。
 
@@ -64,9 +66,10 @@ slugify() {
 }
 
 # 从 https URL 推导缩写 namespace：host缩写.owner.repo（per-repo 唯一）。
-# 支持 github.com→gh、gitlab.com→glab；未知 host 或非 https 返回非 0（调用方回退 slug）。
+# 第二参数为 abbr 映射文件（每行 "host<TAB>缩写"，由 read_manifest 生成），优先查配置，
+# 未命中回退内置默认 github.com→gh、gitlab.com→glab，仍无返回非 0（调用方回退 slug）。
 derive_namespace() {
-    local url="$1" rest host owner repo
+    local url="$1" abbrfile="${2:-}" rest host owner repo abbr
     url="${url%.git}"
     rest="${url#https://}"
     [ "$rest" = "$url" ] && return 1   # 非 https，无法可靠切分，回退
@@ -74,33 +77,44 @@ derive_namespace() {
     rest="${rest#*/}"
     owner="${rest%%/*}"
     repo="${rest#*/}"
-    case "$host" in
-        github.com) host="gh" ;;
-        gitlab.com) host="glab" ;;
-        *) return 1 ;;
-    esac
+    abbr=""
+    if [ -n "$abbrfile" ] && [ -f "$abbrfile" ]; then
+        abbr="$(awk -F'\t' -v h="$host" '$1==h {print $2; exit}' "$abbrfile")"
+    fi
+    if [ -z "$abbr" ]; then
+        case "$host" in
+            github.com) abbr="gh" ;;
+            gitlab.com) abbr="glab" ;;
+            *) return 1 ;;
+        esac
+    fi
     [ -n "$owner" ] && [ -n "$repo" ] || return 1
-    printf '%s.%s.%s\n' "$host" "$owner" "$repo"
+    printf '%s.%s.%s\n' "$abbr" "$owner" "$repo"
 }
 
-# 读 YAML 清单（受限子集），逐行输出 "ns<TAB>src<TAB>lineno"；错误信息走 stderr，返回非 0。
-# 支持的语法：
-#   - 整行注释：以 # 开头（允许前导空白）
-#   - 行尾注释：值后的 " #..."（空格+# 起）
-#   - 头行 sources: 忽略
-#   - 条目行：<namespace>: <source-ref>（按第一个 ": " 切分 key/value）
+# 读 YAML 清单（受限子集），单遍解析：
+#   - 段头 host-aliases: / sources: 切换状态，后续 "k: v" 条目归入当前段
+#   - 整行注释（# 起）、行尾注释（空格+# 起）、空行忽略
+#   - 段顺序自由；host-aliases: 段可省略（无 alias 条目，全用内置默认）
+# 输出：sources 条目走 stdout（"ns<TAB>src<TAB>lineno"），alias 条目写入 $1 指定的临时文件
+#       （"host<TAB>别名"）；错误信息走 stderr，返回非 0。
 read_manifest() {
-    local lineno=0 line key val
+    local abbr_out="${1:-/dev/null}" lineno=0 line key val mode=""
+    : > "$abbr_out" 2>/dev/null || true
     while IFS= read -r line; do
         lineno=$((lineno + 1))
         # 去行首/行尾空白（缩进无关紧要）
         line="$(printf '%s' "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
         # 剥离 UTF-8 BOM（Windows PowerShell 5.1 的 UTF8 编码写清单会带 BOM）
         line="${line#"$(printf '\357\273\277')"}"
-        # 空行 / 整行注释 / sources 头
+        # 空行 / 整行注释
         case "$line" in
             ''|'#'*) continue ;;
-            'sources:'|'sources') continue ;;
+        esac
+        # 段头（允许 ":" 后无内容，如 "sources"）
+        case "$line" in
+            'host-aliases:'|'host-aliases') mode="alias"; continue ;;
+            'sources:'|'sources') mode="src"; continue ;;
         esac
         # 行尾注释：剥掉 " #" 及其后
         line="${line%% #*}"
@@ -114,14 +128,22 @@ read_manifest() {
                 val="${line#*: }"
                 ;;
             *)
-                err "第 $lineno 行格式错误（需 namespace: source-ref）：$line"
+                err "第 $lineno 行格式错误（需 key: value）：$line"
                 return 1
                 ;;
         esac
         key="$(printf '%s' "$key" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
         val="$(printf '%s' "$val" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-        [ -n "$key" ] && [ -n "$val" ] || { err "第 $lineno 行缺 namespace 或 source-ref：$line"; return 1; }
-        printf '%s\t%s\t%s\n' "$key" "$val" "$lineno"
+        [ -n "$key" ] && [ -n "$val" ] || { err "第 $lineno 行缺 key 或 value：$line"; return 1; }
+
+        case "$mode" in
+            alias) printf '%s\t%s\n' "$key" "$val" >> "$abbr_out" ;;
+            src)   printf '%s\t%s\t%s\n' "$key" "$val" "$lineno" ;;
+            *)
+                err "第 $lineno 行条目缺少段头（需先 host-aliases: 或 sources:）：$line"
+                return 1
+                ;;
+        esac
     done < "$MANIFEST"
 }
 
@@ -226,7 +248,7 @@ mount_external() {
 
 # apply：同步 + 冲突预检 + 挂载（幂等）
 cmd_apply() {
-    local tmperr tmpnames parsed lineno ns src extra pr url ref key cache
+    local tmperr tmpnames parsed abbrfile lineno ns src extra pr url ref key cache
     local explicit ns_resolved repoid skill_md skill_dir skill_name name desc skill_abs
     local dupes d root st mounted skipped failed total
 
@@ -235,11 +257,12 @@ cmd_apply() {
     tmperr="$(mktemp)"
     tmpnames="$(mktemp)"
     parsed="$(mktemp)"
+    abbrfile="$(mktemp)"
     rawmanifest="$(mktemp)"
-    trap 'rm -f "$tmperr" "$tmpnames" "$parsed" "$rawmanifest"' RETURN
+    trap 'rm -f "$tmperr" "$tmpnames" "$parsed" "$abbrfile" "$rawmanifest"' RETURN
 
-    # 读 YAML 清单（受限子集）→ 临时文件（逐行 ns/src/lineno）
-    if ! read_manifest > "$rawmanifest"; then
+    # 读 YAML 清单（受限子集）→ 临时文件（逐行 ns/src/lineno），abbr 写 abbrfile
+    if ! read_manifest "$abbrfile" > "$rawmanifest"; then
         return 1
     fi
 
@@ -275,7 +298,7 @@ cmd_apply() {
             repoid="$(tr -d '[:space:]' < "$cache/REPO_ID" 2>/dev/null || true)"
             if [ -n "$repoid" ]; then
                 ns_resolved="$repoid"
-            elif ns_resolved="$(derive_namespace "$url" 2>/dev/null)"; then
+            elif ns_resolved="$(derive_namespace "$url" "$abbrfile" 2>/dev/null)"; then
                 :
             else
                 ns_resolved="$(slugify "$url")"
@@ -354,7 +377,7 @@ cmd_add() {
                 warn "已存在同一源：$msrc"
                 return 0
             fi
-        done < <(read_manifest)
+        done < <(read_manifest /dev/null)
     else
         # 新建清单：写 sources: 头
         printf 'sources:\n' > "$MANIFEST"
@@ -379,7 +402,7 @@ cmd_remove() {
             [ -n "$pr" ] || continue
             pu="${pr%%$'\t'*}"
             cache_to_prune="$CACHE_ROOT/$(slugify "$pu")"
-        done < <(read_manifest)
+        done < <(read_manifest /dev/null)
     fi
 
     # 卸载该 namespace 的所有链接（只删 symlink，保护真实目录）
@@ -444,7 +467,7 @@ cmd_list() {
             url="<解析失败>"; ref=""
         fi
         printf '%s\t%s\t%s\t%s\n' "$ns" "$src" "$url" "$ref"
-    done < <(read_manifest)
+    done < <(read_manifest /dev/null)
 }
 
 cmd="${1:-apply}"

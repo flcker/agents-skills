@@ -29,8 +29,10 @@
 #
 # namespace 规则：
 #   - 清单内每行 "namespace: source-ref"（YAML 受限子集，支持 # 整行注释）。
-#   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 host缩写.owner.repo
-#     推导（github.com→gh、gitlab.com→glab）；仍无法推导（未知 host）则回退按 URL 生成 slug。
+#   - 清单另含 host-aliases: 段（可省），格式 "host: 别名"，覆盖内置默认
+#     github.com→gh、gitlab.com→glab。
+#   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 host别名.owner.repo
+#     推导（host 查 host-aliases 段 → 内置默认 → 仍无则回退按 URL 生成 slug）。
 #   - namespace 是"每源一个"的挂载前缀；同 namespace 下同名技能视为冲突（fail-fast，
 #     本轮不挂载任何外部技能，并打印改 namespace 的修复指引）。
 
@@ -73,44 +75,57 @@ function ConvertTo-Slug([string]$S) {
     return $s.Trim('-')
 }
 
-# 从 https URL 推导缩写 namespace：host缩写.owner.repo（per-repo 唯一）。
-# 支持 github.com→gh、gitlab.com→glab；未知 host 或非 https 返回 $null（调用方回退 slug）。
-function Derive-Namespace([string]$Url) {
+# 从 https URL 推导缩写 namespace：host别名.owner.repo（per-repo 唯一）。
+# $AliasMap 是 @{ host = 别名 }（配置覆盖内置默认）；host 未命中则回退内置默认，仍无返回 $null。
+function Derive-Namespace([string]$Url, [hashtable]$AliasMap) {
     $u = $Url -replace '\.git$', ''
     if ($u -notmatch '^https://([^/]+)/([^/]+)/([^/]+)$') { return $null }
     $hName = $Matches[1]; $owner = $Matches[2]; $repo = $Matches[3]
-    $abbr = switch ($hName) {
-        'github.com' { 'gh' }
-        'gitlab.com' { 'glab' }
-        default { $null }
-    }
-    if (-not $abbr) { return $null }
+    $builtin = @{ 'github.com' = 'gh'; 'gitlab.com' = 'glab' }
+    if ($AliasMap -and $AliasMap.ContainsKey($hName)) { $abbr = $AliasMap[$hName] }
+    elseif ($builtin.ContainsKey($hName)) { $abbr = $builtin[$hName] }
+    else { return $null }
     return "$abbr.$owner.$repo"
 }
 
-# 读 YAML 清单（受限子集），逐条输出 @{ Ns; Src; Lineno }。支持：
-#   整行注释（# 起）、行尾注释（空格+# 起）、sources: 头、条目 "ns: src"（按 ": " 切分）。
+# 读 YAML 清单（受限子集）→ 输出 @{ Sources; Aliases; Lineno }，单遍解析：
+#   - 段头 host-aliases: / sources: 切换状态，后续 "k: v" 条目归入当前段
+#   - 整行注释（# 起）、行尾注释（空格+# 起）、空行忽略；条目按第一个 ": " 切分 key/value
+#   - 段顺序自由；host-aliases: 段可省略（Aliases 为空，全用内置默认）
 function Read-Manifest {
-    $result = New-Object System.Collections.ArrayList
+    $srcs = New-Object System.Collections.ArrayList
+    $aliases = @{}
+    $mode = $null
     $lineno = 0
-    foreach ($raw in (Get-Content -LiteralPath $Manifest -ErrorAction Stop)) {
+    foreach ($raw in (Get-Content -LiteralPath $Manifest -Encoding UTF8 -ErrorAction Stop)) {
         $lineno++
         $line = $raw.Trim()
         if ($line -eq '' -or $line.StartsWith('#')) { continue }
-        if ($line -match '^sources:?\s*$') { continue }
+        # 段头（允许 ":" 后无内容，如 "sources"）
+        if ($line -match '^host-aliases\s*:?\s*$') { $mode = 'alias'; continue }
+        if ($line -match '^sources\s*:?\s*$') { $mode = 'src'; continue }
         # 行尾注释：剥掉 " #" 及其后
         $hashIdx = $line.IndexOf(' #')
         if ($hashIdx -ge 0) { $line = $line.Substring(0, $hashIdx).TrimEnd() }
         if ($line -eq '' -or $line.StartsWith('#')) { continue }
 
         $sep = $line.IndexOf(': ')
-        if ($sep -lt 0) { throw "第 $lineno 行格式错误（需 namespace: source-ref）：$line" }
+        if ($sep -lt 0) { throw "第 $lineno 行格式错误（需 key: value）：$line" }
         $key = $line.Substring(0, $sep).Trim()
         $val = $line.Substring($sep + 2).Trim()
-        if (-not $key -or -not $val) { throw "第 $lineno 行缺 namespace 或 source-ref：$line" }
-        [void]$result.Add([pscustomobject]@{ Ns = $key; Src = $val; Lineno = $lineno })
+        if (-not $key -or -not $val) { throw "第 $lineno 行缺 key 或 value：$line" }
+
+        if ($mode -eq 'alias') {
+            $aliases[$key] = $val
+        }
+        elseif ($mode -eq 'src') {
+            [void]$srcs.Add([pscustomobject]@{ Ns = $key; Src = $val; Lineno = $lineno })
+        }
+        else {
+            throw "第 $lineno 行条目缺少段头（需先 host-aliases: 或 sources:）：$line"
+        }
     }
-    return $result
+    return [pscustomobject]@{ Sources = $srcs; Aliases = $aliases }
 }
 
 # 解析 source-ref → @{ Url = ...; Ref = ... }；失败返回 $null
@@ -209,8 +224,10 @@ function Invoke-Apply {
         return
     }
 
+    $manifest = Read-Manifest
+    $aliasMap = $manifest.Aliases
     $entries = New-Object System.Collections.ArrayList
-    foreach ($m in (Read-Manifest)) {
+    foreach ($m in $manifest.Sources) {
         $pr = Resolve-SourceRef $m.Src
         if (-not $pr) { throw "第 $($m.Lineno) 行解析失败：$($m.Src)" }
         $explicit = 1; if ($m.Ns -eq 'auto') { $explicit = 0 }
@@ -246,7 +263,7 @@ function Invoke-Apply {
             }
             if (-not [string]::IsNullOrWhiteSpace($rid)) { $nsResolved = $rid }
             else {
-                $derived = Derive-Namespace $e.url
+                $derived = Derive-Namespace $e.url $aliasMap
                 if ($derived) { $nsResolved = $derived }
                 else { $nsResolved = ConvertTo-Slug $e.url }
             }
@@ -329,7 +346,7 @@ function Invoke-Add([string[]]$CmdArgs) {
     }
     # 去重：按归一化后的 url+ref 比较
     $newPr = Resolve-SourceRef $src
-    foreach ($m in (Read-Manifest)) {
+    foreach ($m in (Read-Manifest).Sources) {
         $existPr = Resolve-SourceRef $m.Src
         if ($existPr -and $existPr.Url -eq $newPr.Url -and $existPr.Ref -eq $newPr.Ref) {
             Write-Warning "已存在同一源：$($m.Src)"
@@ -350,7 +367,7 @@ function Invoke-Remove([string[]]$CmdArgs) {
 
     $cacheToPrune = $null
     if ($prune) {
-        foreach ($m in (Read-Manifest)) {
+        foreach ($m in (Read-Manifest).Sources) {
             if ($m.Ns -ne $target) { continue }
             $pr = Resolve-SourceRef $m.Src
             if ($pr) { $cacheToPrune = Join-Path $CacheRoot (ConvertTo-Slug $pr.Url) }
@@ -383,7 +400,7 @@ function Invoke-Remove([string[]]$CmdArgs) {
         }
     }
 
-    $keep = Get-Content -LiteralPath $Manifest | Where-Object {
+    $keep = Get-Content -LiteralPath $Manifest -Encoding UTF8 | Where-Object {
         $line = $_.TrimEnd()
         $sep = $line.IndexOf(': ')
         if ($sep -lt 0) { return $true }   # 注释/空行/sources: 头一律保留
@@ -402,7 +419,7 @@ function Invoke-Update([string[]]$CmdArgs) {
     # update 等价全量 apply（幂等同步所有源）。-Namespace 仅存在性提示，不改变同步范围。
     if ($CmdArgs.Count -ge 1 -and $CmdArgs[0] -ne '-Namespace' -and -not $CmdArgs[0].StartsWith('-Namespace=')) {
         $ns = $CmdArgs[0]
-        if ($ns -ne '--all' -and -not (Select-String -LiteralPath $Manifest -Pattern "^[ \t]*${ns}[ \t]*:" -Quiet -ErrorAction SilentlyContinue)) {
+        if ($ns -ne '--all' -and -not (Select-String -LiteralPath $Manifest -Encoding UTF8 -Pattern "^[ \t]*${ns}[ \t]*:" -Quiet -ErrorAction SilentlyContinue)) {
             Write-Warning "清单中无显式 namespace '$ns'；仍执行全量同步。"
         }
     }
@@ -412,7 +429,7 @@ function Invoke-Update([string[]]$CmdArgs) {
 function Invoke-List {
     if (-not (Test-Path -LiteralPath $Manifest)) { Write-Host "无清单（$Manifest）"; return }
     Write-Host "namespace`tsource-ref`tURL`tref"
-    foreach ($m in (Read-Manifest)) {
+    foreach ($m in (Read-Manifest).Sources) {
         $pr = Resolve-SourceRef $m.Src
         if ($pr) { $url = $pr.Url; $ref = $pr.Ref } else { $url = '<解析失败>'; $ref = '' }
         Write-Host "$($m.Ns)`t$($m.Src)`t$url`t$ref"

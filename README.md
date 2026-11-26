@@ -114,11 +114,12 @@ bash scripts/install-skills.sh
 除本仓库 `skills/` 下的内建技能外，还能声明式管理**来自外部 git 仓库**的技能。
 
 - **事实源**：`external-skills.yaml`，YAML 受限子集，`sources:` 下每行一条 `namespace: source-ref`，支持 `#` 注释。
+- **host 别名**：清单可含 `host-aliases:` 段（可省，顺序自由），格式 `host: 别名`，覆盖内置默认 `github.com`→`gh`、`gitlab.com`→`glab`；仅 auto 推导 namespace 时使用。
 - **source-ref 语法**（ref 缺省 `HEAD`，即跟随远程默认分支）：
   - `github:owner/repo@v1.2.0` → `https://github.com/owner/repo.git` + ref `v1.2.0`
   - `gitlab:owner/repo@abc1234` → `https://gitlab.com/owner/repo.git` + ref `abc1234`
   - `https://host/owner/repo.git@v1.2.0` → 原 URL + ref 取最后一个 `@` 之后
-- **namespace**：每源一个挂载前缀，外部技能以 `<namespace>.<技能名>` 挂载，与本仓库内建技能（`<技能名>`）物理隔离、互不覆盖。写 `auto` 表示自动推导（优先读源仓库 `REPO_ID`；无则按 `host缩写.owner.repo` 推导，`github.com`→`gh`、`gitlab.com`→`glab`；未知 host 回退 URL slug）。单 skill 仓库（SKILL.md 在仓库根）挂载名 = namespace 本身（无点）。
+- **namespace**：每源一个挂载前缀，外部技能以 `<namespace>.<技能名>` 挂载，与本仓库内建技能（`<技能名>`）物理隔离、互不覆盖。写 `auto` 表示自动推导（优先读源仓库 `REPO_ID`；无则按 `host别名.owner.repo` 推导，host 查 `host-aliases` 段 → 内置默认 → 未知 host 回退 URL slug）。单 skill 仓库（SKILL.md 在仓库根）挂载名 = namespace 本身（无点）。
 - **ref 纪律**：生产/CI 用 tag 或 commit SHA；branch 仅开发期使用。
 
 管理命令（`bash scripts/external-skills.sh`，Windows 用 `external-skills.ps1` 同名子命令）：

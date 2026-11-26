@@ -16,6 +16,13 @@
 #
 # ref 纪律：生产/CI 用 tag 或 commit SHA；branch（如 main）仅开发期使用。
 #
+# host 别名映射（auto 推导 namespace 时用）：<host>: <别名>。
+#   缺省时脚本用内置默认 github.com→gh、gitlab.com→glab；此处条目覆盖默认。
+#   host-aliases: 段可放在 sources: 前或后，也可整个省略（全用内置默认）。
+host-aliases:
+  github.com: gh
+  gitlab.com: glab
+#
 # 示例（注释行不会被处理，取消注释即可启用）：
 sources:
   # flcker.awesome: github:flcker/awesome-skills@v1.2.0

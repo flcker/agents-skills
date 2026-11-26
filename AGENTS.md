@@ -106,9 +106,9 @@ skills/ 按用途分二级目录，叶子目录名 = 技能名：
 
 除 `skills/` 下的内建技能外，仓库支持声明式管理**来自外部 git 仓库**的技能。事实源是 `external-skills.yaml`（清单），管理入口是 `scripts/external-skills.{sh,ps1}`。
 
-- **清单格式**：YAML 受限子集，`sources:` 下每行 `namespace: source-ref`；`#` 注释、空行忽略。
+- **清单格式**：YAML 受限子集，`sources:` 下每行 `namespace: source-ref`；`#` 注释、空行忽略。另可含 `host-aliases:` 段（可省、顺序自由），格式 `host: 别名`，覆盖内置默认 `github.com`→`gh`、`gitlab.com`→`glab`。
 - **source-ref**：`github:owner/repo@v1.2.0`、`gitlab:owner/repo@abc1234`、`https://host/owner/repo.git@v1.2.0`；ref 缺省 `HEAD`（跟随远程默认分支）。
-- **namespace**：每源一个挂载前缀，外部技能以 `<namespace>.<技能名>` 挂载，与内建技能隔离；写 `auto` 自动推导（优先源 `REPO_ID`；否则 `host缩写.owner.repo`，`github.com`→`gh`、`gitlab.com`→`glab`；未知 host 回退 URL slug）。单 skill 仓库（SKILL.md 在仓库根）挂载名 = namespace 本身（无点）。
+- **namespace**：每源一个挂载前缀，外部技能以 `<namespace>.<技能名>` 挂载，与内建技能隔离；写 `auto` 自动推导（优先源 `REPO_ID`；否则 `host别名.owner.repo`，host 查 `host-aliases` 段 → 内置默认 → 未知 host 回退 URL slug）。单 skill 仓库（SKILL.md 在仓库根）挂载名 = namespace 本身（无点）。
 - **冲突**：同 namespace 下同名技能 → `apply` fail-fast（整轮不挂载、打印改 namespace 指引），禁止静默覆盖或半成品挂载。
 - **ref 纪律**：生产/CI 用 tag 或 commit SHA；branch 仅开发期。
 - **安全**：外部仓库不经 `check-sanitize` 校验，内容安全由使用方自担；清单内不得放凭据（凭据走 git credential helper）。
