@@ -1,8 +1,10 @@
 ﻿# external-skills.ps1
 #
 # 管理"外部 git 仓库技能"：读 external-skills.yaml 清单（事实源），把声明的外部技能源
-# 克隆/更新到用户级缓存，再以 <namespace>.<技能名> 的挂载名 Junction 到各 Agent skill
-# 根目录，与本仓库内建技能（<技能名>）物理隔离，互不覆盖。
+# 克隆/更新到用户级缓存，再挂载到各 Agent skill 根目录，与本仓库内建技能物理隔离、
+# 互不覆盖。挂载名规则：
+#   - 多 skill 仓库（SKILL.md 在子目录）：<namespace>.<技能名>
+#   - 单 skill 仓库（SKILL.md 在仓库根）：namespace 本身（无点）
 #
 # 仅适用于 Windows（PowerShell 5.1+ 或 PowerShell 7+）。macOS / Linux / WSL 请用
 # external-skills.sh。
@@ -27,7 +29,8 @@
 #
 # namespace 规则：
 #   - 清单内每行 "namespace: source-ref"（YAML 受限子集，支持 # 整行注释）。
-#   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 URL 生成 slug。
+#   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 host缩写.owner.repo
+#     推导（github.com→gh、gitlab.com→glab）；仍无法推导（未知 host）则回退按 URL 生成 slug。
 #   - namespace 是"每源一个"的挂载前缀；同 namespace 下同名技能视为冲突（fail-fast，
 #     本轮不挂载任何外部技能，并打印改 namespace 的修复指引）。
 
@@ -68,6 +71,21 @@ function ConvertTo-Slug([string]$S) {
     $s = $s -replace '\.git$', ''
     $s = [regex]::Replace($s, '[^A-Za-z0-9]+', '-')
     return $s.Trim('-')
+}
+
+# 从 https URL 推导缩写 namespace：host缩写.owner.repo（per-repo 唯一）。
+# 支持 github.com→gh、gitlab.com→glab；未知 host 或非 https 返回 $null（调用方回退 slug）。
+function Derive-Namespace([string]$Url) {
+    $u = $Url -replace '\.git$', ''
+    if ($u -notmatch '^https://([^/]+)/([^/]+)/([^/]+)$') { return $null }
+    $hName = $Matches[1]; $owner = $Matches[2]; $repo = $Matches[3]
+    $abbr = switch ($hName) {
+        'github.com' { 'gh' }
+        'gitlab.com' { 'glab' }
+        default { $null }
+    }
+    if (-not $abbr) { return $null }
+    return "$abbr.$owner.$repo"
 }
 
 # 读 YAML 清单（受限子集），逐条输出 @{ Ns; Src; Lineno }。支持：
@@ -227,7 +245,11 @@ function Invoke-Apply {
                 $rid = (Get-Content -LiteralPath $ridFile -Raw).Trim()
             }
             if (-not [string]::IsNullOrWhiteSpace($rid)) { $nsResolved = $rid }
-            else { $nsResolved = ConvertTo-Slug $e.url }
+            else {
+                $derived = Derive-Namespace $e.url
+                if ($derived) { $nsResolved = $derived }
+                else { $nsResolved = ConvertTo-Slug $e.url }
+            }
         }
         if ([string]::IsNullOrWhiteSpace($nsResolved)) { throw "第 $($e.lineno) 行 namespace 为空" }
 
@@ -235,10 +257,18 @@ function Invoke-Apply {
             Where-Object { $_.FullName -notmatch '\\\.git\\' }
         foreach ($md in $skillMds) {
             $skillDir = Split-Path -Parent $md.FullName
-            $skillName = Split-Path -Leaf $skillDir
-            [void]$names.Add([pscustomobject]@{
-                name = "$nsResolved.$skillName"; desc = "$($e.url) @ $($e.ref)"; abs = $skillDir
-            })
+            if ($skillDir -eq $e.cache) {
+                # 单 skill 仓库（SKILL.md 在根）：挂载名 = namespace 本身（无点）
+                [void]$names.Add([pscustomobject]@{
+                    name = "$nsResolved"; desc = "$($e.url) @ $($e.ref)"; abs = $skillDir
+                })
+            }
+            else {
+                $skillName = Split-Path -Leaf $skillDir
+                [void]$names.Add([pscustomobject]@{
+                    name = "$nsResolved.$skillName"; desc = "$($e.url) @ $($e.ref)"; abs = $skillDir
+                })
+            }
         }
     }
 
@@ -329,17 +359,28 @@ function Invoke-Remove([string[]]$CmdArgs) {
 
     foreach ($root in $agentSkillRoots) {
         if (-not (Test-Path -LiteralPath $root)) { continue }
-        Get-ChildItem -LiteralPath $root -Filter "$target.*" -Force -ErrorAction SilentlyContinue |
-            Where-Object { Test-IsLink $_.FullName } |
-            ForEach-Object {
-                # 精确匹配：链接名 = "<namespace>.<技能名>"，namespace = 去掉最后 "." 及其后
-                $base = $_.Name
-                $dot = $base.LastIndexOf('.')
-                if ($dot -ge 0 -and $base.Substring(0, $dot) -eq $target) {
-                    Remove-Item -LiteralPath $_.FullName -Force
-                    Write-Host "已卸载：$($_.FullName)"
+        # 匹配两类挂载名：
+        #   1) 单 skill 仓库（SKILL.md 在根）：挂载名 = namespace 本身（无点，如 gh.owner.repo）
+        #   2) 多 skill 仓库：挂载名 = "<namespace>.<技能名>"，namespace = 去掉最后一个 "." 及其后
+        $patterns = @("$target.*", "$target")
+        foreach ($pat in $patterns) {
+            Get-ChildItem -LiteralPath $root -Filter $pat -Force -ErrorAction SilentlyContinue |
+                Where-Object { Test-IsLink $_.FullName } |
+                ForEach-Object {
+                    $base = $_.Name
+                    if ($base -eq $target) {
+                        Remove-Item -LiteralPath $_.FullName -Force
+                        Write-Host "已卸载：$($_.FullName)"
+                    }
+                    else {
+                        $dot = $base.LastIndexOf('.')
+                        if ($dot -ge 0 -and $base.Substring(0, $dot) -eq $target) {
+                            Remove-Item -LiteralPath $_.FullName -Force
+                            Write-Host "已卸载：$($_.FullName)"
+                        }
+                    }
                 }
-            }
+        }
     }
 
     $keep = Get-Content -LiteralPath $Manifest | Where-Object {

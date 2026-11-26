@@ -3,8 +3,10 @@
 # external-skills.sh
 #
 # 管理"外部 git 仓库技能"：读 external-skills.yaml 清单（事实源），把声明的外部技能源
-# 克隆/更新到用户级缓存，再以 <namespace>.<技能名> 的挂载名链接到各 Agent skill 根目录，
-# 与本仓库内建技能（<技能名>）物理隔离，互不覆盖。
+# 克隆/更新到用户级缓存，再挂载到各 Agent skill 根目录，与本仓库内建技能物理隔离、
+# 互不覆盖。挂载名规则：
+#   - 多 skill 仓库（SKILL.md 在子目录）：<namespace>.<技能名>
+#   - 单 skill 仓库（SKILL.md 在仓库根）：namespace 本身（无点）
 #
 # 适用于 macOS / Linux / WSL。Windows 原生 PowerShell 请用 external-skills.ps1。
 #
@@ -28,7 +30,8 @@
 #
 # namespace 规则：
 #   - 清单内每行 "namespace: source-ref"（YAML 受限子集，支持 # 整行注释）。
-#   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 URL 生成 slug。
+#   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 host缩写.owner.repo
+#     推导（github.com→gh、gitlab.com→glab）；仍无法推导（未知 host）则回退按 URL 生成 slug。
 #   - namespace 是"每源一个"的挂载前缀；同 namespace 下同名技能视为冲突（fail-fast，
 #     本轮不挂载任何外部技能，并打印改 namespace 的修复指引）。
 
@@ -58,6 +61,26 @@ slugify() {
     s="$(printf '%s' "$s" | tr -cs '[:alnum:]' '-')"
     s="${s#-}"; s="${s%-}"
     printf '%s\n' "$s"
+}
+
+# 从 https URL 推导缩写 namespace：host缩写.owner.repo（per-repo 唯一）。
+# 支持 github.com→gh、gitlab.com→glab；未知 host 或非 https 返回非 0（调用方回退 slug）。
+derive_namespace() {
+    local url="$1" rest host owner repo
+    url="${url%.git}"
+    rest="${url#https://}"
+    [ "$rest" = "$url" ] && return 1   # 非 https，无法可靠切分，回退
+    host="${rest%%/*}"
+    rest="${rest#*/}"
+    owner="${rest%%/*}"
+    repo="${rest#*/}"
+    case "$host" in
+        github.com) host="gh" ;;
+        gitlab.com) host="glab" ;;
+        *) return 1 ;;
+    esac
+    [ -n "$owner" ] && [ -n "$repo" ] || return 1
+    printf '%s.%s.%s\n' "$host" "$owner" "$repo"
 }
 
 # 读 YAML 清单（受限子集），逐行输出 "ns<TAB>src<TAB>lineno"；错误信息走 stderr，返回非 0。
@@ -250,13 +273,24 @@ cmd_apply() {
             ns_resolved="$ns"
         else
             repoid="$(tr -d '[:space:]' < "$cache/REPO_ID" 2>/dev/null || true)"
-            if [ -n "$repoid" ]; then ns_resolved="$repoid"; else ns_resolved="$(slugify "$url")"; fi
+            if [ -n "$repoid" ]; then
+                ns_resolved="$repoid"
+            elif ns_resolved="$(derive_namespace "$url" 2>/dev/null)"; then
+                :
+            else
+                ns_resolved="$(slugify "$url")"
+            fi
         fi
         [ -z "$ns_resolved" ] && { err "第 $lineno 行 namespace 为空"; return 1; }
         while IFS= read -r skill_md; do
             skill_dir="$(dirname "$skill_md")"
-            skill_name="$(basename "$skill_dir")"
-            printf '%s\t%s @ %s\t%s\n' "$ns_resolved.$skill_name" "$url" "$ref" "$skill_dir" >> "$tmpnames"
+            if [ "$skill_dir" = "$cache" ]; then
+                # 单 skill 仓库（SKILL.md 在根）：挂载名 = namespace 本身（无点）
+                printf '%s\t%s @ %s\t%s\n' "$ns_resolved" "$url" "$ref" "$skill_dir" >> "$tmpnames"
+            else
+                skill_name="$(basename "$skill_dir")"
+                printf '%s\t%s @ %s\t%s\n' "$ns_resolved.$skill_name" "$url" "$ref" "$skill_dir" >> "$tmpnames"
+            fi
         done < <(find "$cache" -name SKILL.md -not -path '*/.git/*' 2>/dev/null)
     done < "$parsed"
 
@@ -349,18 +383,21 @@ cmd_remove() {
     fi
 
     # 卸载该 namespace 的所有链接（只删 symlink，保护真实目录）
-    # 精确匹配：链接名 = "<namespace>.<技能名>"，技能名不含 "."（kebab-case 约定）。
-    # 因此 namespace 部分 = 去掉最后一个 "." 及其后。用 ${base%.*} 严格比较，避免
-    # target=foo 时误删 namespace="foo.bar" 的链接 "foo.bar.xxx"。
+    # 匹配两类挂载名：
+    #   1) 单 skill 仓库（SKILL.md 在根）：挂载名 = namespace 本身（无点，如 gh.owner.repo）
+    #   2) 多 skill 仓库：挂载名 = "<namespace>.<技能名>"，技能名不含 "."（kebab-case 约定）
+    # 因此第 2 类 namespace 部分 = 去掉最后一个 "." 及其后，用 ${base%.*} 严格比较，避免
+    # target=foo 时误删 namespace="foo.bar" 的链接 "foo.bar.xxx"。第 1 类 base == target 直接匹配。
     for root in "${AGENT_SKILL_ROOTS[@]}"; do
         [ -d "$root" ] || continue
-        for entry in "$root"/"$target".*; do
+        for entry in "$root"/"$target" "$root"/"$target".*; do
             [ -e "$entry" ] || [ -L "$entry" ] || continue
             base="$(basename "$entry")"
-            [ "${base%.*}" = "$target" ] || continue
-            if [ -L "$entry" ]; then
-                rm -f "$entry"
-                echo "已卸载：$entry"
+            if [ "$base" = "$target" ] || [ "${base%.*}" = "$target" ]; then
+                if [ -L "$entry" ]; then
+                    rm -f "$entry"
+                    echo "已卸载：$entry"
+                fi
             fi
         done
     done

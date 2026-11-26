@@ -118,7 +118,7 @@ bash scripts/install-skills.sh
   - `github:owner/repo@v1.2.0` → `https://github.com/owner/repo.git` + ref `v1.2.0`
   - `gitlab:owner/repo@abc1234` → `https://gitlab.com/owner/repo.git` + ref `abc1234`
   - `https://host/owner/repo.git@v1.2.0` → 原 URL + ref 取最后一个 `@` 之后
-- **namespace**：每源一个挂载前缀，外部技能以 `<namespace>.<技能名>` 挂载，与本仓库内建技能（`<技能名>`）物理隔离、互不覆盖。写 `auto` 表示自动推导（优先读源仓库 `REPO_ID`，无则按 URL 生成 slug）。
+- **namespace**：每源一个挂载前缀，外部技能以 `<namespace>.<技能名>` 挂载，与本仓库内建技能（`<技能名>`）物理隔离、互不覆盖。写 `auto` 表示自动推导（优先读源仓库 `REPO_ID`；无则按 `host缩写.owner.repo` 推导，`github.com`→`gh`、`gitlab.com`→`glab`；未知 host 回退 URL slug）。单 skill 仓库（SKILL.md 在仓库根）挂载名 = namespace 本身（无点）。
 - **ref 纪律**：生产/CI 用 tag 或 commit SHA；branch 仅开发期使用。
 
 管理命令（`bash scripts/external-skills.sh`，Windows 用 `external-skills.ps1` 同名子命令）：
