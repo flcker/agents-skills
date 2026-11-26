@@ -134,7 +134,7 @@ bash scripts/external-skills.sh list
 
 行为要点：
 
-- **同步**：克隆/更新到用户级缓存 `~/.agents/external-skills/<url-slug>/`（Windows：`%USERPROFILE%\.agents\external-skills\`），与仓库解耦、可重建。
+- **同步**：克隆/更新到用户级缓存 `~/.agents/external-skills/<url-slug>/`（Windows：`%USERPROFILE%\.agents\external-skills\`），与仓库解耦、可重建。缓存目录名由 URL 直译（`slug`），超长 owner/repo 或深路径场景可设 `EXTERNAL_SKILLS_HOME` 指向短路径规避 Windows MAX_PATH。
 - **发现**：宽松扫描源内任意含 `SKILL.md` 的目录（不强求 `skills/<分类>/` 两级布局）。
 - **冲突**：同 namespace 下同名技能视为冲突，`apply` **fail-fast**——打印冲突清单与「改 namespace」指引，本轮不挂载任何外部技能，绝不做半成品挂载或静默覆盖。
 - **接入**：`install-skills.{sh,ps1}` 会在清单非空时自动委托 `apply`（内建技能挂载完成后执行）。
