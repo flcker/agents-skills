@@ -178,4 +178,4 @@ keybindings 是唯一例外：默认 profile 的 `keybindings.*` 会合并进来
 
 ## 本机现状
 
-本机的具体 provider/modelRoles 选型、模型能力与价格实测、基准数据见本机私有目录 `~/.omp/agent/omp-private-config/`（`local-state.md`、`model-roles.md`、`model-roles-bench-results.md`）。这些内容含内网 provider 与本机路径，不进公开仓库。
+本机的具体 provider/modelRoles 选型、模型能力与价格实测、基准数据见本机私有 skill `omp-private-config`（含内网 provider 与本机选型理由，处理本机配置时优先读它）。该 skill 仅存在于本机，不进公开仓库。

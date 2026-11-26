@@ -64,7 +64,7 @@ agents-skills/
 
 - [`external-skill-manager`](skills/ops/external-skill-manager/) — 外部技能管理编排：用户给外部 skill 的 git 仓库 URL、GitHub/GitLab 仓库页或介绍网页，把输入识别为 source-ref、决定 ref 与 namespace，调用 `scripts/external-skills.{sh,ps1}` 写入 `external-skills.yaml` 并同步挂载到各 Agent；网页反爬时配合 `cdp-search-fetch` 抓取提取仓库地址。
 - [`mcp-server-manager`](skills/ops/mcp-server-manager/) — MCP 登记管理编排：用户给 MCP 名称、官方文档 URL、npx 启动命令或介绍网页，识别为 name + docs + pattern（guide/usage/direct）+ 可选 command/env，调用 `scripts/mcp-servers.{sh,ps1}` 写入 `mcp-servers.yaml` 并校验；只登记不接入，凭证只记环境变量名。
-- [`omp-config`](skills/ops/omp-config/) — omp（Oh My Pi）配置排查：config.yml 六层优先级与合并语义、`omp config set` 写入陷阱（record 整条覆盖/点号键只认注册叶子/类型解析）、modelRoles 与 models.yml 分工、自定义 provider、MCP/LSP/keybindings 文件地图、技能发现、profile 隔离、plan/goal/vibe 会话模式、`omp://docs` 文档路由；本机私有现状（provider/modelRoles 选型、基准数据）留在 `~/.omp/agent/omp-private-config/` 不入仓库。
+- [`omp-config`](skills/ops/omp-config/) — omp（Oh My Pi）配置排查：config.yml 六层优先级与合并语义、`omp config set` 写入陷阱（record 整条覆盖/点号键只认注册叶子/类型解析）、modelRoles 与 models.yml 分工、自定义 provider、MCP/LSP/keybindings 文件地图、技能发现、profile 隔离、plan/goal/vibe 会话模式、`omp://docs` 文档路由；本机私有现状（provider/modelRoles 选型、基准数据）见本机私有 skill `omp-private-config`，不入仓库。
 
 ### tool/ —— 业务无关的操作工具类
 
