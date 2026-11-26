@@ -21,3 +21,4 @@ sources:
   # flcker.awesome: github:flcker/awesome-skills@v1.2.0
   # team.tools: gitlab:team/tools@abc1234def
   # auto: https://github.com/alice/skills.git
+auto: github:nothing0here/humanizer-zh
