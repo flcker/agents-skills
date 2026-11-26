@@ -115,6 +115,7 @@ bash scripts/install-skills.sh
 
 - **事实源**：`external-skills.yaml`，YAML 受限子集，`sources:` 下每行一条 `namespace: source-ref`，支持 `#` 注释。
 - **host 别名**：清单可含 `host-aliases:` 段（可省，顺序自由），格式 `host: 别名`，覆盖内置默认 `github.com`→`gh`、`gitlab.com`→`glab`；仅 auto 推导 namespace 时使用。
+- **skill 筛选**：清单可含 `skill-filters:` 段（可省，顺序自由），格式 `namespace: 逗号分隔的 skill 名白名单`，仅作用于多 skill 仓库（SKILL.md 在子目录）；被筛选的 namespace 必须是 `sources:` 里显式指定的 namespace。无此段 = 全量挂载。
 - **source-ref 语法**（ref 缺省 `HEAD`，即跟随远程默认分支）：
   - `github:owner/repo@v1.2.0` → `https://github.com/owner/repo.git` + ref `v1.2.0`
   - `gitlab:owner/repo@abc1234` → `https://gitlab.com/owner/repo.git` + ref `abc1234`

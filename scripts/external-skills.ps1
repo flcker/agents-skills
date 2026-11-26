@@ -31,6 +31,8 @@
 #   - 清单内每行 "namespace: source-ref"（YAML 受限子集，支持 # 整行注释）。
 #   - 清单另含 host-aliases: 段（可省），格式 "host: 别名"，覆盖内置默认
 #     github.com→gh、gitlab.com→glab。
+#   - 清单另含 skill-filters: 段（可省），格式 "namespace: 逗号分隔的 skill 名白名单"，
+#     仅作用于多 skill 仓库（SKILL.md 在子目录），被筛选 namespace 须为 sources: 显式指定。
 #   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 host别名.owner.repo
 #     推导（host 查 host-aliases 段 → 内置默认 → 仍无则回退按 URL 生成 slug）。
 #   - namespace 是"每源一个"的挂载前缀；同 namespace 下同名技能视为冲突（fail-fast，
@@ -88,13 +90,14 @@ function Derive-Namespace([string]$Url, [hashtable]$AliasMap) {
     return "$abbr.$owner.$repo"
 }
 
-# 读 YAML 清单（受限子集）→ 输出 @{ Sources; Aliases; Lineno }，单遍解析：
-#   - 段头 host-aliases: / sources: 切换状态，后续 "k: v" 条目归入当前段
+# 读 YAML 清单（受限子集）→ 输出 @{ Sources; Aliases; Filters; Lineno }，单遍解析：
+#   - 段头 host-aliases: / skill-filters: / sources: 切换状态，后续 "k: v" 条目归入当前段
 #   - 整行注释（# 起）、行尾注释（空格+# 起）、空行忽略；条目按第一个 ": " 切分 key/value
-#   - 段顺序自由；host-aliases: 段可省略（Aliases 为空，全用内置默认）
+#   - 段顺序自由；host-aliases: / skill-filters: 段可省略（Aliases/Filters 为空）
 function Read-Manifest {
     $srcs = New-Object System.Collections.ArrayList
     $aliases = @{}
+    $filters = @{}
     $mode = $null
     $lineno = 0
     foreach ($raw in (Get-Content -LiteralPath $Manifest -Encoding UTF8 -ErrorAction Stop)) {
@@ -103,6 +106,7 @@ function Read-Manifest {
         if ($line -eq '' -or $line.StartsWith('#')) { continue }
         # 段头（允许 ":" 后无内容，如 "sources"）
         if ($line -match '^host-aliases\s*:?\s*$') { $mode = 'alias'; continue }
+        if ($line -match '^skill-filters\s*:?\s*$') { $mode = 'filter'; continue }
         if ($line -match '^sources\s*:?\s*$') { $mode = 'src'; continue }
         # 行尾注释：剥掉 " #" 及其后
         $hashIdx = $line.IndexOf(' #')
@@ -118,14 +122,17 @@ function Read-Manifest {
         if ($mode -eq 'alias') {
             $aliases[$key] = $val
         }
+        elseif ($mode -eq 'filter') {
+            $filters[$key] = $val
+        }
         elseif ($mode -eq 'src') {
             [void]$srcs.Add([pscustomobject]@{ Ns = $key; Src = $val; Lineno = $lineno })
         }
         else {
-            throw "第 $lineno 行条目缺少段头（需先 host-aliases: 或 sources:）：$line"
+            throw "第 $lineno 行条目缺少段头（需先 host-aliases: / skill-filters: / sources:）：$line"
         }
     }
-    return [pscustomobject]@{ Sources = $srcs; Aliases = $aliases }
+    return [pscustomobject]@{ Sources = $srcs; Aliases = $aliases; Filters = $filters }
 }
 
 # 解析 source-ref → @{ Url = ...; Ref = ... }；失败返回 $null
@@ -226,6 +233,7 @@ function Invoke-Apply {
 
     $manifest = Read-Manifest
     $aliasMap = $manifest.Aliases
+    $filterMap = $manifest.Filters
     $entries = New-Object System.Collections.ArrayList
     foreach ($m in $manifest.Sources) {
         $pr = Resolve-SourceRef $m.Src
@@ -270,18 +278,40 @@ function Invoke-Apply {
         }
         if ([string]::IsNullOrWhiteSpace($nsResolved)) { throw "第 $($e.lineno) 行 namespace 为空" }
 
+        # 白名单筛选（仅多 skill 仓库）：skill-filters 段里该 namespace 的逗号分隔名单
+        $whitelist = $null
+        if ($filterMap -and $filterMap.ContainsKey($nsResolved)) {
+            $whitelist = @($filterMap[$nsResolved] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+        }
+
         $skillMds = Get-ChildItem -LiteralPath $e.cache -Recurse -Filter 'SKILL.md' -File -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -notmatch '\\\.git\\' }
+
+        # 收集实际 skillName（仅多 skill 仓库的目录 leaf），用于白名单未命中告警
+        $actualNames = @()
+        foreach ($md in $skillMds) {
+            $d = Split-Path -Parent $md.FullName
+            if ($d -ne $e.cache) { $actualNames += (Split-Path -Leaf $d) }
+        }
+        if ($whitelist) {
+            foreach ($w in $whitelist) {
+                if ($actualNames -notcontains $w) {
+                    Write-Warning "skill-filters 名单中的 '$w' 在 $($e.url) 未找到，已跳过"
+                }
+            }
+        }
+
         foreach ($md in $skillMds) {
             $skillDir = Split-Path -Parent $md.FullName
             if ($skillDir -eq $e.cache) {
-                # 单 skill 仓库（SKILL.md 在根）：挂载名 = namespace 本身（无点）
+                # 单 skill 仓库（SKILL.md 在根）：挂载名 = namespace 本身（无点），不参与筛选
                 [void]$names.Add([pscustomobject]@{
                     name = "$nsResolved"; desc = "$($e.url) @ $($e.ref)"; abs = $skillDir
                 })
             }
             else {
                 $skillName = Split-Path -Leaf $skillDir
+                if ($whitelist -and ($whitelist -notcontains $skillName)) { continue }
                 [void]$names.Add([pscustomobject]@{
                     name = "$nsResolved.$skillName"; desc = "$($e.url) @ $($e.ref)"; abs = $skillDir
                 })

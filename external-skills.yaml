@@ -1,31 +1,30 @@
-# external-skills.yaml
+# external-skills.yaml — 外部 git 仓库技能清单（事实源）
 #
-# 外部 git 仓库技能清单（事实源）。YAML 受限子集，每行一个条目：
-#   <namespace>: <source-ref>
+# 三段结构（均为「段头 + 平铺 key: value」的 YAML 受限子集，段顺序自由、可省略）：
+#   sources:            namespace: source-ref —— 要接入的仓库
+#   host-aliases:       host: 别名 —— auto 推导 namespace 时覆盖内置默认 gh/glab
+#   skill-filters:      namespace: 逗号分隔 skill 名 —— 多 skill 仓库只挂名单内的
 #
-# namespace：该源的挂载前缀（外部技能以 <namespace>.<技能名> 挂载，与本仓库内建技能隔离）。
-#   - 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID，无则按 URL 生成 slug。
-#   - 显式指定时，同 namespace 下同名技能视为冲突，apply 会 fail-fast（详见 scripts/external-skills.sh）。
+# 挂载名规则：
+#   - 多 skill 仓库（SKILL.md 在子目录）→ <namespace>.<skillName>
+#   - 单 skill 仓库（SKILL.md 在根）→ namespace 本身（无点）
 #
-# source-ref 语法：
-#   github:owner/repo@v1.2.0            → https://github.com/owner/repo.git + ref v1.2.0
-#   gitlab:owner/repo@abc1234            → https://gitlab.com/owner/repo.git + ref abc1234
-#   https://host/owner/repo.git@v1.2.0   → 原 URL + ref 取最后一个 @ 之后
-#   省略 @ref 时 ref 缺省为 HEAD（跟随远程默认分支，兼容 main/master 等命名）。
-#   完整 URL 形式不得内嵌 userinfo/密码（凭据请走 git credential helper）。
-#
-# ref 纪律：生产/CI 用 tag 或 commit SHA；branch（如 main）仅开发期使用。
-#
-# host 别名映射（auto 推导 namespace 时用）：<host>: <别名>。
-#   缺省时脚本用内置默认 github.com→gh、gitlab.com→glab；此处条目覆盖默认。
-#   host-aliases: 段可放在 sources: 前或后，也可整个省略（全用内置默认）。
+# 编辑须知：
+#   - source-ref：github:owner/repo[@tag]、gitlab:owner/repo[@ref]、https://…git[@ref]
+#   - ref 缺省 HEAD；生产/CI 用 tag 或 commit SHA
+#   - namespace 写 auto 自动推导（REPO_ID → host别名.owner.repo → URL slug）
+#   - skill-filters 的被筛选 namespace 必须是 sources: 里显式指定的（auto 推导无法稳定引用）
+#   - skill-filters 名单里未匹配到的 skill 名会告警（拼错名会暴露）
+#   - 同 namespace 同名 skill → apply fail-fast；完整语法见 README「外部技能」章节
+#   - 缓存目录 ~/.agents/external-skills/<url-slug>/ 可手动删，apply 会重新 clone
+
 host-aliases:
   github.com: gh
   gitlab.com: glab
-#
-# 示例（注释行不会被处理，取消注释即可启用）：
+
+skill-filters:
+  humanlayer: show-me
+
 sources:
-  # flcker.awesome: github:flcker/awesome-skills@v1.2.0
-  # team.tools: gitlab:team/tools@abc1234def
-  # auto: https://github.com/alice/skills.git
-auto: github:nothing0here/humanizer-zh
+  auto: github:nothing0here/humanizer-zh
+  humanlayer: github:humanlayer/skills

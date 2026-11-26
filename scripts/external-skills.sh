@@ -32,6 +32,8 @@
 #   - 清单内每行 "namespace: source-ref"（YAML 受限子集，支持 # 整行注释）。
 #   - 清单另含 host-aliases: 段（可省），格式 "host: 别名"，覆盖内置默认
 #     github.com→gh、gitlab.com→glab。
+#   - 清单另含 skill-filters: 段（可省），格式 "namespace: 逗号分隔的 skill 名白名单"，
+#     仅作用于多 skill 仓库（SKILL.md 在子目录），被筛选 namespace 须为 sources: 显式指定。
 #   - namespace 写 "auto" 表示自动推导：优先读源仓库根目录 REPO_ID；无则按 host别名.owner.repo
 #     推导（host 查 host-aliases 段 → 内置默认 → 仍无则回退按 URL 生成 slug）。
 #   - namespace 是"每源一个"的挂载前缀；同 namespace 下同名技能视为冲突（fail-fast，
@@ -93,14 +95,16 @@ derive_namespace() {
 }
 
 # 读 YAML 清单（受限子集），单遍解析：
-#   - 段头 host-aliases: / sources: 切换状态，后续 "k: v" 条目归入当前段
+#   - 段头 host-aliases: / skill-filters: / sources: 切换状态，后续 "k: v" 条目归入当前段
 #   - 整行注释（# 起）、行尾注释（空格+# 起）、空行忽略
-#   - 段顺序自由；host-aliases: 段可省略（无 alias 条目，全用内置默认）
-# 输出：sources 条目走 stdout（"ns<TAB>src<TAB>lineno"），alias 条目写入 $1 指定的临时文件
-#       （"host<TAB>别名"）；错误信息走 stderr，返回非 0。
+#   - 段顺序自由；host-aliases: / skill-filters: 段可省略
+# 输出：sources 条目走 stdout（"ns<TAB>src<TAB>lineno"），alias 条目写入 $1 指定临时文件
+#       （"host<TAB>别名"），filter 条目写入 $2 指定临时文件（"ns<TAB>逗号分隔名单"）；
+#       错误信息走 stderr，返回非 0。
 read_manifest() {
-    local abbr_out="${1:-/dev/null}" lineno=0 line key val mode=""
+    local abbr_out="${1:-/dev/null}" filter_out="${2:-/dev/null}" lineno=0 line key val mode=""
     : > "$abbr_out" 2>/dev/null || true
+    : > "$filter_out" 2>/dev/null || true
     while IFS= read -r line; do
         lineno=$((lineno + 1))
         # 去行首/行尾空白（缩进无关紧要）
@@ -114,6 +118,7 @@ read_manifest() {
         # 段头（允许 ":" 后无内容，如 "sources"）
         case "$line" in
             'host-aliases:'|'host-aliases') mode="alias"; continue ;;
+            'skill-filters:'|'skill-filters') mode="filter"; continue ;;
             'sources:'|'sources') mode="src"; continue ;;
         esac
         # 行尾注释：剥掉 " #" 及其后
@@ -137,10 +142,11 @@ read_manifest() {
         [ -n "$key" ] && [ -n "$val" ] || { err "第 $lineno 行缺 key 或 value：$line"; return 1; }
 
         case "$mode" in
-            alias) printf '%s\t%s\n' "$key" "$val" >> "$abbr_out" ;;
-            src)   printf '%s\t%s\t%s\n' "$key" "$val" "$lineno" ;;
+            alias)  printf '%s\t%s\n' "$key" "$val" >> "$abbr_out" ;;
+            filter) printf '%s\t%s\n' "$key" "$val" >> "$filter_out" ;;
+            src)    printf '%s\t%s\t%s\n' "$key" "$val" "$lineno" ;;
             *)
-                err "第 $lineno 行条目缺少段头（需先 host-aliases: 或 sources:）：$line"
+                err "第 $lineno 行条目缺少段头（需先 host-aliases: / skill-filters: / sources:）：$line"
                 return 1
                 ;;
         esac
@@ -248,9 +254,9 @@ mount_external() {
 
 # apply：同步 + 冲突预检 + 挂载（幂等）
 cmd_apply() {
-    local tmperr tmpnames parsed abbrfile lineno ns src extra pr url ref key cache
+    local tmperr tmpnames parsed abbrfile filterfile lineno ns src extra pr url ref key cache
     local explicit ns_resolved repoid skill_md skill_dir skill_name name desc skill_abs
-    local dupes d root st mounted skipped failed total
+    local dupes d root st mounted skipped failed total whitelist wl_item
 
     [ -f "$MANIFEST" ] || { echo "无清单 $MANIFEST，没有外部技能，跳过。"; return 0; }
 
@@ -258,11 +264,12 @@ cmd_apply() {
     tmpnames="$(mktemp)"
     parsed="$(mktemp)"
     abbrfile="$(mktemp)"
+    filterfile="$(mktemp)"
     rawmanifest="$(mktemp)"
-    trap 'rm -f "$tmperr" "$tmpnames" "$parsed" "$abbrfile" "$rawmanifest"' RETURN
+    trap 'rm -f "$tmperr" "$tmpnames" "$parsed" "$abbrfile" "$filterfile" "$rawmanifest"' RETURN
 
-    # 读 YAML 清单（受限子集）→ 临时文件（逐行 ns/src/lineno），abbr 写 abbrfile
-    if ! read_manifest "$abbrfile" > "$rawmanifest"; then
+    # 读 YAML 清单（受限子集）→ 临时文件（逐行 ns/src/lineno），abbr/filter 写各自文件
+    if ! read_manifest "$abbrfile" "$filterfile" > "$rawmanifest"; then
         return 1
     fi
 
@@ -305,13 +312,36 @@ cmd_apply() {
             fi
         fi
         [ -z "$ns_resolved" ] && { err "第 $lineno 行 namespace 为空"; return 1; }
+
+        # 白名单筛选（仅多 skill 仓库）：skill-filters 段里该 namespace 的逗号分隔名单
+        whitelist=""
+        if [ -f "$filterfile" ]; then
+            whitelist="$(awk -F'\t' -v n="$ns_resolved" '$1==n {print $2; exit}' "$filterfile")"
+        fi
+
+        # 收集实际 skillName，用于白名单未命中告警
+        if [ -n "$whitelist" ]; then
+            for wl_item in $(printf '%s' "$whitelist" | tr ',' ' '); do
+                if ! find "$cache" -mindepth 1 -type d -name "$wl_item" -not -path '*/.git/*' 2>/dev/null | grep -q .; then
+                    warn "skill-filters 名单中的 '$wl_item' 在 $url 未找到，已跳过"
+                fi
+            done
+        fi
+
         while IFS= read -r skill_md; do
             skill_dir="$(dirname "$skill_md")"
             if [ "$skill_dir" = "$cache" ]; then
-                # 单 skill 仓库（SKILL.md 在根）：挂载名 = namespace 本身（无点）
+                # 单 skill 仓库（SKILL.md 在根）：挂载名 = namespace 本身（无点），不参与筛选
                 printf '%s\t%s @ %s\t%s\n' "$ns_resolved" "$url" "$ref" "$skill_dir" >> "$tmpnames"
             else
                 skill_name="$(basename "$skill_dir")"
+                if [ -n "$whitelist" ]; then
+                    hit=0
+                    for wl_item in $(printf '%s' "$whitelist" | tr ',' ' '); do
+                        [ "$wl_item" = "$skill_name" ] && hit=1
+                    done
+                    [ "$hit" = "0" ] && continue
+                fi
                 printf '%s\t%s @ %s\t%s\n' "$ns_resolved.$skill_name" "$url" "$ref" "$skill_dir" >> "$tmpnames"
             fi
         done < <(find "$cache" -name SKILL.md -not -path '*/.git/*' 2>/dev/null)
